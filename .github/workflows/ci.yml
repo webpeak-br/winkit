@@ -51,7 +51,9 @@ jobs:
         shell: powershell
         run: |
           $env:WINKIT_DATA = "$env:RUNNER_TEMP\winkit"
-          $code = Get-Content dist\winkit.ps1 -Raw -Encoding UTF8
+          # Lê como o irm do PowerShell 5.1 lê um download do GitHub (sem charset = ISO-8859-1).
+          $code = [Text.Encoding]::GetEncoding(28591).GetString([IO.File]::ReadAllBytes('dist\winkit.ps1'))
+          if ($code[0] -eq [char]0xFEFF -or $code.StartsWith('ï»¿')) { throw 'arquivo único com BOM' }
           Set-Location $env:RUNNER_TEMP
           & ([scriptblock]::Create($code)) run -Module Health -Json | Out-File out.json -Encoding utf8
           $r = Get-Content out.json -Raw | ConvertFrom-Json

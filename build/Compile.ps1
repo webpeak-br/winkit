@@ -22,7 +22,8 @@ $hash = (Get-FileHash -InputStream ([IO.MemoryStream]::new([Text.Encoding]::UTF8
 
 $bootstrap = @'
 #Requires -Version 5.1
-# WinKit __VERSION__ (arquivo único gerado por build/Compile.ps1; o código-fonte legível está em https://github.com/webpeak-br/winkit)
+# WinKit __VERSION__ - arquivo unico gerado por build/Compile.ps1. Codigo-fonte legivel: https://github.com/webpeak-br/winkit
+# Este arquivo e 100% ASCII e sem BOM: o "irm" do Windows PowerShell 5.1 nao sabe a codificacao e estragaria acentos.
 # Uso: irm https://github.com/webpeak-br/winkit/releases/latest/download/winkit.ps1 | iex
 # Ou com comando: & ([scriptblock]::Create((irm https://github.com/webpeak-br/winkit/releases/latest/download/winkit.ps1))) run -Module Health
 $WinKitVersion = '__VERSION__'
@@ -60,7 +61,9 @@ if (-not $isAdmin) {
 $out = $bootstrap.Replace('__VERSION__', $version).Replace('__HASH__', $hash).Replace('__ENTRIES__', ($entries -join "`n"))
 New-Item -ItemType Directory -Path $OutDir -Force | Out-Null
 $dest = Join-Path $OutDir 'winkit.ps1'
-[IO.File]::WriteAllText($dest, $out, (New-Object Text.UTF8Encoding $true))
+$bad = [regex]::Matches($out, '[^\x00-\x7F]')
+if ($bad.Count) { throw "O arquivo unico precisa ser ASCII; achei $($bad.Count) caractere(s) fora, como '$($bad[0].Value)'." }
+[IO.File]::WriteAllText($dest, $out, (New-Object Text.ASCIIEncoding))
 $sha = (Get-FileHash $dest -Algorithm SHA256).Hash
 "$sha  winkit.ps1" | Set-Content (Join-Path $OutDir 'SHA256SUMS.txt') -Encoding ASCII
 Write-Host "Gerado $dest ($([math]::Round((Get-Item $dest).Length / 1KB)) KB, $($files.Count) arquivos, SHA-256 $sha)"
