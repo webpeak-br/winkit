@@ -22,4 +22,6 @@ jobs:
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create $env:GITHUB_REF_NAME dist/winkit.ps1 dist/WinKit.zip dist/SHA256SUMS.txt --title $env:GITHUB_REF_NAME --notes "Rode no PowerShell como administrador: irm https://github.com/webpeak-br/winkit/releases/latest/download/winkit.ps1 | iex"
+        run: |
+          $notes = "Rode no PowerShell como administrador:`n`n[Net.ServicePointManager]::SecurityProtocol = 'Tls12'; irm https://github.com/webpeak-br/winkit/releases/latest/download/winkit.ps1 | iex"
+          gh release create $env:GITHUB_REF_NAME dist/winkit.ps1 dist/WinKit.zip dist/SHA256SUMS.txt --title $env:GITHUB_REF_NAME --notes $notes

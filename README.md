@@ -17,14 +17,16 @@ Kit open source para **preparar, otimizar, proteger e diagnosticar Windows**: Wi
 Abra o **PowerShell como administrador** e rode:
 
 ```powershell
-irm https://github.com/webpeak-br/winkit/releases/latest/download/winkit.ps1 | iex
+[Net.ServicePointManager]::SecurityProtocol = 'Tls12'; irm https://github.com/webpeak-br/winkit/releases/latest/download/winkit.ps1 | iex
 ```
+
+A primeira parte força TLS 1.2: sem ela, o Windows PowerShell 5.1 de algumas máquinas tenta um TLS antigo e o GitHub fecha a conexão.
 
 Abre um menu com diagnóstico, reparo, relatórios e desfazer. Se o PowerShell não estiver como administrador, o WinKit pede a elevação sozinho. O arquivo é gerado a partir do código deste repositório a cada versão; o SHA-256 está em `SHA256SUMS.txt` na release.
 
 Para automação, passe o comando direto:
 ```powershell
-& ([scriptblock]::Create((irm https://github.com/webpeak-br/winkit/releases/latest/download/winkit.ps1))) run -Module Health
+[Net.ServicePointManager]::SecurityProtocol = 'Tls12'; & ([scriptblock]::Create((irm https://github.com/webpeak-br/winkit/releases/latest/download/winkit.ps1))) run -Module Health
 ```
 
 ### Com o .zip
