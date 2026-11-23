@@ -1,1 +1,383 @@
-﻿
+﻿# Interface gráfica do WinKit (WPF). Cada operação roda num runspace separado, para a janela não travar;
+# o log chega por uma fila e aparece na barra de baixo. Precisa de STA (o winkit.ps1 cuida disso).
+# Os blocos de evento não usam GetNewClosure: precisam enxergar as funções e o $script:Gui deste arquivo.
+
+$script:GuiPages = 'PageOverview', 'PageHealth', 'PageApps', 'PageUpdates', 'PageMaint', 'PageHistory'
+
+function Show-WinKitGui {
+    [CmdletBinding()]
+    param()
+    Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase
+    $xaml = [xml](Get-Content (Join-Path $PSScriptRoot 'MainWindow.xaml') -Raw -Encoding UTF8)
+    $win = [Windows.Markup.XamlReader]::Load((New-Object System.Xml.XmlNodeReader $xaml))
+    $ui = @{}
+    $xaml.SelectNodes('//*[@*[local-name()="Name"]]') | ForEach-Object {
+        $n = $_.Attributes | Where-Object LocalName -eq 'Name' | Select-Object -First 1
+        $ui[$n.Value] = $win.FindName($n.Value)
+    }
+    $script:Gui = @{ Ui = $ui; Win = $win; Busy = $false; Task = $null; Queue = New-Object 'System.Collections.Concurrent.ConcurrentQueue[string]'
+        ModulePath = (Join-Path (Split-Path $PSScriptRoot -Parent) 'WinKit.psd1'); LastReport = $null; AppBoxes = @{}; UpdBoxes = @{} }
+    $script:Colors = @{ ok = '#3ECF8E'; warn = '#F5B041'; crit = '#FF5C6C'; info = '#7AA2FF' }
+    $script:StatusLabel = @{ ok = 'OK'; warn = 'Atenção'; crit = 'Crítico'; info = 'Info' }
+
+    $ui.Version.Text = "WinKit $((Get-Module WinKit).Version)`ngithub.com/webpeak-br/winkit"
+    $info = Get-WinKitEnvironment
+    $ui.MachineName.Text = $info.ComputerName
+    $ui.MachineInfo.Text = "$($info.Caption) · build $($info.Build) · $($info.Edition)$(if ($info.IsVirtual) { ' · máquina virtual' }) · $($info.Manufacturer) $($info.Model)$(if ($info.DomainJoined) { " · domínio $($info.Domain)" })"
+
+    foreach ($b in $ui.NavPanel.Children) { $b.Add_Click({ param($s) Show-GuiPage $s.Tag }) }
+    $ui.BtnToggleLog.Add_Click({
+        $l = $script:Gui.Ui.LogBox
+        $l.Visibility = if ($l.Visibility -eq 'Visible') { 'Collapsed' } else { 'Visible' }
+        $script:Gui.Ui.BtnToggleLog.Content = if ($l.Visibility -eq 'Visible') { 'Esconder log' } else { 'Mostrar log' }
+    })
+
+    # Visão geral e diagnóstico
+    $ui.BtnRefresh.Add_Click({ Update-GuiCard })
+    $ui.BtnQuickHealth.Add_Click({ Show-GuiPage 'PageHealth'; Start-GuiHealth })
+    $ui.BtnRunHealth.Add_Click({ Start-GuiHealth })
+    $ui.BtnOpenReport.Add_Click({ if ($script:Gui.LastReport) { Start-Process $script:Gui.LastReport } })
+
+    # Aplicativos
+    $ui.BtnAppsCheck.Add_Click({ Update-GuiInstalledApp })
+    $ui.BtnAppsClear.Add_Click({ foreach ($c in $script:Gui.AppBoxes.Values) { if ($c.IsEnabled) { $c.IsChecked = $false } } })
+    $ui.BtnAppsInstall.Add_Click({
+        $ids = @($script:Gui.AppBoxes.GetEnumerator() | Where-Object { $_.Value.IsEnabled -and $_.Value.IsChecked } | ForEach-Object Key)
+        if (-not $ids.Count) { Set-GuiStatus 'Marque pelo menos um aplicativo.'; return }
+        Start-GuiTask -Title "Instalando $($ids.Count) aplicativo(s)" -Arguments @{ Ids = $ids } -Work {
+            Invoke-WinKit -Module Apps -Mode invoke -ModuleParams @{ Install = $TaskArgs.Ids } -NoReport -Force
+        } -Done { param($r) Show-GuiResult $r 'Instalação'; Update-GuiInstalledApp }
+    })
+    $ui.BtnAppsUpgrade.Add_Click({
+        Start-GuiTask -Title 'Atualizando todos os programas (winget)' -Work {
+            Invoke-WinKit -Module Apps -Mode invoke -ModuleParams @{ UpgradeAll = $true } -NoReport -Force
+        } -Done { param($r) Show-GuiResult $r 'Atualização de programas' }
+    })
+
+    # Atualizações do Windows
+    $ui.BtnUpdFind.Add_Click({ Start-GuiFindUpdate })
+    $ui.BtnUpdInstall.Add_Click({
+        $ids = @($script:Gui.UpdBoxes.GetEnumerator() | Where-Object { $_.Value.IsChecked } | ForEach-Object Key)
+        if (-not $ids.Count) { Set-GuiStatus 'Marque pelo menos uma atualização.'; return }
+        $drivers = [bool]$script:Gui.Ui.ChkDrivers.IsChecked
+        Start-GuiTask -Title "Instalando $($ids.Count) atualização(ões)" -Arguments @{ Ids = $ids; Drivers = $drivers } -Work {
+            Invoke-WinKit -Module Updates -Mode invoke -ModuleParams @{ UpdateIds = $TaskArgs.Ids; IncludeDrivers = $TaskArgs.Drivers } -NoReport -Force
+        } -Done {
+            param($r)
+            Show-GuiResult $r 'Windows Update'
+            if ($r -and $r.RebootRequired) { [void][Windows.MessageBox]::Show('Reinicie o computador para concluir as atualizações.', 'WinKit') }
+        }
+    })
+
+    # Manutenção
+    $ui.BtnRepair.Add_Click({
+        if ([Windows.MessageBox]::Show('Reparar o Windows com DISM e SFC? Pode levar até uma hora.', 'WinKit', 'YesNo') -ne 'Yes') { return }
+        Start-GuiTask -Title 'Reparando o Windows (DISM + SFC)' -Work { Invoke-WinKit -ProfileName 'Reparo-Sistema' -Force } -Done { param($r) Show-GuiResult $r 'Reparo' }
+    })
+    $ui.BtnRestorePoint.Add_Click({
+        Start-GuiTask -Title 'Criando ponto de restauração' -Work { New-WinKitRestorePoint -Description 'WinKit (manual)'; 'ok' } -Done { Set-GuiStatus 'Ponto de restauração solicitado (veja o log).' }
+    })
+    $ui.BtnOpenData.Add_Click({
+        $d = Join-Path (Get-WinKitDataRoot) 'runs'
+        if (-not (Test-Path $d)) { New-Item -ItemType Directory $d | Out-Null }
+        Start-Process explorer.exe $d
+    })
+    $ui.BtnHistReload.Add_Click({ Show-GuiHistory })
+
+    # Fila de log -> caixa de log e linha de status, a cada 250 ms; também detecta o fim da tarefa.
+    $timer = New-Object Windows.Threading.DispatcherTimer
+    $timer.Interval = [TimeSpan]::FromMilliseconds(250)
+    $timer.Add_Tick({
+        $line = $null
+        while ($script:Gui.Queue.TryDequeue([ref]$line)) {
+            $script:Gui.Ui.LogBox.AppendText("$line`r`n")
+            $script:Gui.Ui.LogBox.ScrollToEnd()
+            Set-GuiStatus ($line -replace '^\S+ \[\w+\] ', '')
+        }
+        $t = $script:Gui.Task
+        if ($t -and $t.Handle.IsCompleted) { Complete-GuiTask }
+    })
+    $timer.Start()
+
+    Show-GuiPage 'PageOverview'
+    Update-GuiCard
+    [void]$win.ShowDialog()
+    $timer.Stop()
+}
+
+function Show-GuiPage {
+    param([string]$Page)
+    foreach ($p in $script:GuiPages) { $script:Gui.Ui[$p].Visibility = if ($p -eq $Page) { 'Visible' } else { 'Collapsed' } }
+    foreach ($b in $script:Gui.Ui.NavPanel.Children) { $b.Background = if ($b.Tag -eq $Page) { '#2A2640' } else { 'Transparent' } }
+    if ($Page -eq 'PageApps' -and -not $script:Gui.AppBoxes.Count) { Show-GuiApp }
+    if ($Page -eq 'PageHistory') { Show-GuiHistory }
+}
+
+function Set-GuiStatus { param([string]$Text) $script:Gui.Ui.StatusLine.Text = $Text }
+
+# Roda um bloco num runspace com o WinKit carregado. $TaskArgs leva os parâmetros; o último valor devolvido vai para -Done.
+function Start-GuiTask {
+    param([string]$Title, [scriptblock]$Work, [scriptblock]$Done, [hashtable]$Arguments = @{})
+    if ($script:Gui.Busy) { Set-GuiStatus 'Aguarde a tarefa atual terminar.'; return }
+    $script:Gui.Busy = $true
+    $script:Gui.Ui.Busy.Visibility = 'Visible'
+    Set-GuiStatus "$Title…"
+    $rs = [runspacefactory]::CreateRunspace()
+    $rs.ApartmentState = 'STA'
+    $rs.Open()
+    $rs.SessionStateProxy.SetVariable('TaskArgs', $Arguments)
+    $rs.SessionStateProxy.SetVariable('LogQueue', $script:Gui.Queue)
+    $rs.SessionStateProxy.SetVariable('ModulePath', $script:Gui.ModulePath)
+    $ps = [powershell]::Create()
+    $ps.Runspace = $rs
+    [void]$ps.AddScript("`$env:WINKIT_QUIET = '1'; Import-Module `$ModulePath -Force; Set-WinKitLogSink `$LogQueue`n" + $Work.ToString())
+    $script:Gui.Task = @{ Ps = $ps; Rs = $rs; Handle = $ps.BeginInvoke(); Done = $Done; Title = $Title }
+}
+
+function Complete-GuiTask {
+    $t = $script:Gui.Task
+    $script:Gui.Task = $null
+    $out = $null
+    try { $out = $t.Ps.EndInvoke($t.Handle) } catch { $script:Gui.Queue.Enqueue("ERRO: $($_.Exception.Message)") }
+    foreach ($e in $t.Ps.Streams.Error) { $script:Gui.Queue.Enqueue("ERRO: $e") }
+    $t.Ps.Dispose()
+    $t.Rs.Close()
+    $script:Gui.Busy = $false
+    $script:Gui.Ui.Busy.Visibility = 'Collapsed'
+    Set-GuiStatus "$($t.Title) · concluído."
+    $last = if ($out -and $out.Count) { $out[$out.Count - 1] } else { $null }
+    if ($t.Done) {
+        try { & $t.Done $last } catch { Set-GuiStatus "Erro ao mostrar o resultado: $($_.Exception.Message)" }
+    }
+}
+
+# ---- componentes visuais -----------------------------------------------------------------------
+
+function New-GuiText {
+    param([string]$Text, [string]$Color = '#ECEAF2', [double]$Size = 13, [string]$Weight = 'Normal')
+    $t = New-Object Windows.Controls.TextBlock
+    $t.Text = $Text
+    $t.Foreground = $Color
+    $t.FontSize = $Size
+    $t.FontWeight = $Weight
+    $t.TextWrapping = 'Wrap'
+    return $t
+}
+
+function New-GuiCard {
+    param([string]$Label, [string]$Value, [string]$Sub = '', [string]$Status = 'ok')
+    $b = New-Object Windows.Controls.Border
+    $b.Background = '#1E1D24'; $b.BorderBrush = '#2E2C38'; $b.BorderThickness = 1; $b.CornerRadius = 10
+    $b.Padding = 16; $b.Margin = '0,0,14,14'; $b.Width = 230
+    $sp = New-Object Windows.Controls.StackPanel
+    [void]$sp.Children.Add((New-GuiText $Label '#A3A0B3' 12))
+    $v = New-GuiText $Value $script:Colors[$Status] 24 'SemiBold'
+    $v.Margin = '0,4,0,2'
+    [void]$sp.Children.Add($v)
+    if ($Sub) { [void]$sp.Children.Add((New-GuiText $Sub '#8C899C' 11.5)) }
+    $b.Child = $sp
+    return $b
+}
+
+function Update-GuiCard {
+    Start-GuiTask -Title 'Lendo o estado da máquina' -Work {
+        $os = Get-CimInstance Win32_OperatingSystem
+        $c = Get-CimInstance Win32_LogicalDisk -Filter "DeviceID='$env:SystemDrive'"
+        $cpu = (Get-CimInstance Win32_Processor | Measure-Object LoadPercentage -Average).Average
+        $mp = try { Get-MpComputerStatus -ErrorAction Stop } catch { $null }
+        $fw = @(Get-NetFirewallProfile -ErrorAction SilentlyContinue | Where-Object { -not $_.Enabled }).Count
+        $hf = Get-HotFix -ErrorAction SilentlyContinue | Where-Object InstalledOn | Sort-Object InstalledOn -Descending | Select-Object -First 1
+        [pscustomobject]@{
+            Cpu = [int]$cpu
+            MemPct = [int](100 - $os.FreePhysicalMemory / $os.TotalVisibleMemorySize * 100)
+            MemGB = [math]::Round($os.TotalVisibleMemorySize / 1MB, 1)
+            DiskPct = [int](100 - $c.FreeSpace / $c.Size * 100)
+            DiskFree = [math]::Round($c.FreeSpace / 1GB, 1)
+            UptimeDays = [int]((Get-Date) - $os.LastBootUpTime).TotalDays
+            Defender = if (-not $mp) { 'indisponível' } elseif ($mp.RealTimeProtectionEnabled) { 'ativo' } else { 'sem tempo real' }
+            FirewallOff = $fw
+            LastUpdate = if ($hf) { [int]((Get-Date) - $hf.InstalledOn).TotalDays } else { -1 }
+        }
+    } -Done {
+        param($m)
+        $cards = $script:Gui.Ui.Cards
+        $cards.Children.Clear()
+        if (-not $m) { return }
+        $lv = { param($v, $w, $c) if ($v -ge $c) { 'crit' } elseif ($v -ge $w) { 'warn' } else { 'ok' } }
+        [void]$cards.Children.Add((New-GuiCard 'CPU' "$($m.Cpu)%" 'uso agora' (& $lv $m.Cpu 90 101)))
+        [void]$cards.Children.Add((New-GuiCard 'Memória' "$($m.MemPct)%" "de $($m.MemGB) GB" (& $lv $m.MemPct 85 95)))
+        [void]$cards.Children.Add((New-GuiCard "Disco $env:SystemDrive" "$($m.DiskPct)%" "$($m.DiskFree) GB livres" (& $lv $m.DiskPct 80 90)))
+        [void]$cards.Children.Add((New-GuiCard 'Ligado há' "$($m.UptimeDays) dia(s)" 'desde o último reinício' (& $lv $m.UptimeDays 60 365)))
+        [void]$cards.Children.Add((New-GuiCard 'Antivírus' $m.Defender 'Microsoft Defender' $(if ($m.Defender -eq 'ativo') { 'ok' } else { 'warn' })))
+        $fwText = if ($m.FirewallOff) { "$($m.FirewallOff) perfil(s) desligado(s)" } else { 'ligado' }
+        [void]$cards.Children.Add((New-GuiCard 'Firewall' $fwText 'todos os perfis' $(if ($m.FirewallOff) { 'warn' } else { 'ok' })))
+        $upText = if ($m.LastUpdate -ge 0) { "há $($m.LastUpdate) dia(s)" } else { '—' }
+        [void]$cards.Children.Add((New-GuiCard 'Última atualização' $upText 'Windows Update' $(if ($m.LastUpdate -gt 45) { 'warn' } else { 'ok' })))
+    }
+}
+
+function New-GuiResultRow {
+    param($Result)
+    $st = "$($Result.Status)"
+    $b = New-Object Windows.Controls.Border
+    $b.Background = '#1E1D24'; $b.BorderBrush = '#2E2C38'; $b.BorderThickness = 1; $b.CornerRadius = 8; $b.Padding = '14,10'; $b.Margin = '0,0,0,8'
+    $g = New-Object Windows.Controls.DockPanel
+    $dot = New-Object Windows.Shapes.Ellipse
+    $dot.Width = 10; $dot.Height = 10; $dot.Fill = $script:Colors[$st]; $dot.Margin = '0,4,12,0'; $dot.VerticalAlignment = 'Top'
+    [Windows.Controls.DockPanel]::SetDock($dot, 'Left')
+    [void]$g.Children.Add($dot)
+    $tag = New-GuiText ($script:StatusLabel[$st].ToUpper()) $script:Colors[$st] 11 'SemiBold'
+    $tag.Margin = '12,2,0,0'
+    [Windows.Controls.DockPanel]::SetDock($tag, 'Right')
+    [void]$g.Children.Add($tag)
+    $sp = New-Object Windows.Controls.StackPanel
+    [void]$sp.Children.Add((New-GuiText "$($Result.Message)" '#ECEAF2' 13.5))
+    if ($Result.Fix -and $st -ne 'ok') {
+        $f = New-GuiText "→ $($Result.Fix)" '#A3A0B3' 12
+        $f.Margin = '0,3,0,0'
+        [void]$sp.Children.Add($f)
+    }
+    [void]$g.Children.Add($sp)
+    $b.Child = $g
+    return $b
+}
+
+function Show-GuiResult {
+    param($Run, [string]$What)
+    if (-not $Run) { Set-GuiStatus "$What terminou sem resultado (veja o log)."; return }
+    $list = $script:Gui.Ui.HealthList
+    $list.Children.Clear()
+    $order = @{ crit = 0; warn = 1; info = 2; ok = 3 }
+    foreach ($r in (@($Run.Results) | Sort-Object { $order["$($_.Status)"] })) { [void]$list.Children.Add((New-GuiResultRow $r)) }
+    $report = Join-Path $Run.Dir 'report.html'
+    if (Test-Path $report) { $script:Gui.LastReport = $report; $script:Gui.Ui.BtnOpenReport.IsEnabled = $true }
+    $o = "$($Run.Overall)"
+    $script:Gui.Ui.StatusText.Text = "${What}: $($script:StatusLabel[$o])"
+    $script:Gui.Ui.StatusPill.Background = $script:Colors[$o]
+    $script:Gui.Ui.StatusText.Foreground = '#141318'
+    if ($What -ne 'Diagnóstico') { Show-GuiPage 'PageHealth' }
+    Set-GuiStatus "${What} concluído: $($script:StatusLabel[$o])$(if ($Run.RebootRequired) { ' · reinicie para concluir' })."
+}
+
+function Start-GuiHealth {
+    $script:Gui.Ui.HealthList.Children.Clear()
+    [void]$script:Gui.Ui.HealthList.Children.Add((New-GuiText 'Analisando… (de 30 segundos a alguns minutos)' '#A3A0B3'))
+    Start-GuiTask -Title 'Diagnóstico' -Work { Invoke-WinKit -ProfileName 'Diagnostico' } -Done { param($r) Show-GuiResult $r 'Diagnóstico' }
+}
+
+function Show-GuiApp {
+    $list = $script:Gui.Ui.AppsList
+    $list.Children.Clear()
+    $catalog = Get-Content (Join-Path (Split-Path $PSScriptRoot -Parent) 'Modules\Apps\catalog.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+    foreach ($group in ($catalog | Group-Object category)) {
+        $h = New-GuiText $group.Name '#B5BAFE' 14 'SemiBold'
+        $h.Margin = '0,10,0,6'
+        [void]$list.Children.Add($h)
+        $wrap = New-Object Windows.Controls.WrapPanel
+        foreach ($a in $group.Group) {
+            $cb = New-Object Windows.Controls.CheckBox
+            $cb.Content = $a.name
+            $cb.Width = 230
+            $cb.ToolTip = $a.id
+            $script:Gui.AppBoxes[$a.id] = $cb
+            [void]$wrap.Children.Add($cb)
+        }
+        [void]$list.Children.Add($wrap)
+    }
+    Update-GuiInstalledApp
+}
+
+function Update-GuiInstalledApp {
+    Start-GuiTask -Title 'Verificando programas instalados' -Work {
+        Import-Module (Join-Path (Split-Path $ModulePath -Parent) 'Modules\Apps\Apps.psm1') -Force
+        , @(Get-WinKitInstalledAppId)
+    } -Done {
+        param($ids)
+        foreach ($kv in $script:Gui.AppBoxes.GetEnumerator()) {
+            $on = @($ids) -contains $kv.Key
+            $kv.Value.IsEnabled = -not $on
+            if ($on) { $kv.Value.IsChecked = $true; $kv.Value.Foreground = '#3ECF8E' }
+        }
+        Set-GuiStatus "$(@($ids).Count) programa(s) reconhecido(s) pelo winget; os do catálogo já instalados estão em verde."
+    }
+}
+
+function Start-GuiFindUpdate {
+    $list = $script:Gui.Ui.UpdList
+    $list.Children.Clear()
+    [void]$list.Children.Add((New-GuiText 'Procurando no Windows Update… (pode levar alguns minutos)' '#A3A0B3'))
+    $drivers = [bool]$script:Gui.Ui.ChkDrivers.IsChecked
+    Start-GuiTask -Title 'Procurando atualizações' -Arguments @{ Drivers = $drivers } -Work {
+        Import-Module (Join-Path (Split-Path $ModulePath -Parent) 'Modules\Updates\Updates.psm1') -Force
+        $r = Test-WinKitUpdate -IncludeDrivers $TaskArgs.Drivers
+        , @($r.Detail)
+    } -Done {
+        param($items)
+        $list = $script:Gui.Ui.UpdList
+        $list.Children.Clear()
+        $script:Gui.UpdBoxes = @{}
+        $items = @($items | Where-Object { $_ -and $_.Id })
+        if (-not $items.Count) {
+            [void]$list.Children.Add((New-GuiText 'Nenhuma atualização pendente. O Windows está em dia.' '#3ECF8E' 14))
+            $script:Gui.Ui.BtnUpdInstall.IsEnabled = $false
+            return
+        }
+        foreach ($u in $items) {
+            $cb = New-Object Windows.Controls.CheckBox
+            $cb.IsChecked = $true
+            $cb.Content = "$($u.Title)$(if ($u.KB) { "  ($($u.KB))" })$(if ($u.SizeMB) { " · $($u.SizeMB) MB" })"
+            if ($u.Security) { $cb.Foreground = '#F5B041' }
+            $script:Gui.UpdBoxes[$u.Id] = $cb
+            [void]$list.Children.Add($cb)
+        }
+        $script:Gui.Ui.BtnUpdInstall.IsEnabled = $true
+        Set-GuiStatus "$($items.Count) atualização(ões) encontrada(s); as de segurança estão em amarelo."
+    }
+}
+
+function Show-GuiHistory {
+    $list = $script:Gui.Ui.HistList
+    $list.Children.Clear()
+    $runs = @(Get-WinKitRunList | Select-Object -First 40)
+    if (-not $runs.Count) { [void]$list.Children.Add((New-GuiText 'Nenhuma execução registrada ainda.' '#A3A0B3')); return }
+    foreach ($r in $runs) {
+        $b = New-Object Windows.Controls.Border
+        $b.Background = '#1E1D24'; $b.BorderBrush = '#2E2C38'; $b.BorderThickness = 1; $b.CornerRadius = 8; $b.Padding = '14,10'; $b.Margin = '0,0,0,8'
+        $d = New-Object Windows.Controls.DockPanel
+        $btns = New-Object Windows.Controls.StackPanel
+        $btns.Orientation = 'Horizontal'
+        [Windows.Controls.DockPanel]::SetDock($btns, 'Right')
+        $report = Join-Path (Join-Path (Join-Path (Get-WinKitDataRoot) 'runs') $r.id) 'report.html'
+        if (Test-Path $report) {
+            $o = New-Object Windows.Controls.Button
+            $o.Content = 'Relatório'
+            $o.Tag = $report
+            $o.Add_Click({ param($s) Start-Process $s.Tag })
+            [void]$btns.Children.Add($o)
+        }
+        if ($r.changes -gt 0 -and -not $r.dryRun) {
+            $u = New-Object Windows.Controls.Button
+            $u.Content = 'Desfazer'
+            $u.Tag = $r.id
+            $u.Add_Click({
+                param($s)
+                if ([Windows.MessageBox]::Show("Desfazer as alterações da execução $($s.Tag)?", 'WinKit', 'YesNo') -ne 'Yes') { return }
+                Start-GuiTask -Title "Desfazendo $($s.Tag)" -Arguments @{ Id = $s.Tag } -Work { Undo-WinKitRun -RunId $TaskArgs.Id } -Done {
+                    param($x)
+                    Set-GuiStatus "Desfeito: $($x.Undone) alteração(ões), $($x.Failed) falha(s)."
+                    Show-GuiHistory
+                }
+            })
+            [void]$btns.Children.Add($u)
+        }
+        [void]$d.Children.Add($btns)
+        $sp = New-Object Windows.Controls.StackPanel
+        $what = if ($r.profile) { "Perfil $($r.profile)" } else { "Módulos: $(@($r.modules) -join ', ')" }
+        [void]$sp.Children.Add((New-GuiText $what '#ECEAF2' 13.5 'SemiBold'))
+        $when = try { ([datetime]$r.started).ToString('dd/MM/yyyy HH:mm') } catch { "$($r.started)" }
+        [void]$sp.Children.Add((New-GuiText "$when · $($r.changes) alteração(ões)$(if ($r.dryRun) { ' · simulação' })$(if ($r.reboot) { ' · pediu reinício' })" '#A3A0B3' 12))
+        [void]$d.Children.Add($sp)
+        $b.Child = $d
+        [void]$list.Children.Add($b)
+    }
+}
