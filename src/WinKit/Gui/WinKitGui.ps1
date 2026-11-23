@@ -220,7 +220,7 @@ function Update-GuiCard {
         $os = Get-CimInstance Win32_OperatingSystem
         $c = Get-CimInstance Win32_LogicalDisk -Filter "DeviceID='$env:SystemDrive'"
         $cpu = (Get-CimInstance Win32_Processor | Measure-Object LoadPercentage -Average).Average
-        $mp = try { Get-MpComputerStatus -ErrorAction Stop } catch { $null }
+        $av = Get-WinKitAntivirusStatus
         $fw = @(Get-NetFirewallProfile -ErrorAction SilentlyContinue | Where-Object { -not $_.Enabled }).Count
         $hf = Get-HotFix -ErrorAction SilentlyContinue | Where-Object InstalledOn | Sort-Object InstalledOn -Descending | Select-Object -First 1
         [pscustomobject]@{
@@ -230,7 +230,7 @@ function Update-GuiCard {
             DiskPct = [int](100 - $c.FreeSpace / $c.Size * 100)
             DiskFree = [math]::Round($c.FreeSpace / 1GB, 1)
             UptimeDays = [int]((Get-Date) - $os.LastBootUpTime).TotalDays
-            Defender = if (-not $mp) { 'indisponível' } elseif ($mp.RealTimeProtectionEnabled) { 'ativo' } else { 'sem tempo real' }
+            AvText = $av.Text; AvName = $av.Name; AvStatus = $av.Status
             FirewallOff = $fw
             LastUpdate = if ($hf) { [int]((Get-Date) - $hf.InstalledOn).TotalDays } else { -1 }
         }
@@ -244,7 +244,7 @@ function Update-GuiCard {
         [void]$cards.Children.Add((New-GuiCard 'Memória' "$($m.MemPct)%" "de $($m.MemGB) GB" (& $lv $m.MemPct 85 95)))
         [void]$cards.Children.Add((New-GuiCard "Disco $env:SystemDrive" "$($m.DiskPct)%" "$($m.DiskFree) GB livres" (& $lv $m.DiskPct 80 90)))
         [void]$cards.Children.Add((New-GuiCard 'Ligado há' "$($m.UptimeDays) dia(s)" 'desde o último reinício' (& $lv $m.UptimeDays 60 365)))
-        [void]$cards.Children.Add((New-GuiCard 'Antivírus' $m.Defender 'Microsoft Defender' $(if ($m.Defender -eq 'ativo') { 'ok' } else { 'warn' })))
+        [void]$cards.Children.Add((New-GuiCard 'Antivírus' $m.AvText $m.AvName $m.AvStatus))
         $fwText = if ($m.FirewallOff) { "$($m.FirewallOff) perfil(s) desligado(s)" } else { 'ligado' }
         [void]$cards.Children.Add((New-GuiCard 'Firewall' $fwText 'todos os perfis' $(if ($m.FirewallOff) { 'warn' } else { 'ok' })))
         $upText = if ($m.LastUpdate -ge 0) { "há $($m.LastUpdate) dia(s)" } else { '—' }

@@ -71,3 +71,35 @@ function Get-WinKitEnvironment {
         Summary      = "$($os.Caption) build $($os.BuildNumber) · $model"
     }
 }
+
+# Antivírus registrados na Central de Segurança do Windows (só existe no Desktop). O productState é um número
+# cujos bytes dizem se o produto está ligado (byte do meio 0x10 ou 0x11) e se as definições estão em dia (byte final 0x00).
+function ConvertFrom-WinKitAvState {
+    param([Parameter(Mandatory)][int]$State)
+    $hex = '{0:x6}' -f $State
+    [pscustomobject]@{ Enabled = @('10', '11') -contains $hex.Substring(2, 2); UpToDate = $hex.Substring(4, 2) -eq '00' }
+}
+
+function Get-WinKitAntivirus {
+    $list = @(Get-CimInstance -Namespace root\SecurityCenter2 -ClassName AntiVirusProduct -ErrorAction SilentlyContinue)
+    foreach ($p in $list) {
+        $st = ConvertFrom-WinKitAvState -State ([int]$p.productState)
+        [pscustomobject]@{ Name = "$($p.displayName)"; Enabled = $st.Enabled; UpToDate = $st.UpToDate
+            Defender = "$($p.displayName)" -match 'Defender' }
+    }
+}
+
+# Resumo usado pelo diagnóstico e pela janela: antivírus de terceiros ativo vale; senão, o estado do Defender.
+function Get-WinKitAntivirusStatus {
+    $third = @(Get-WinKitAntivirus | Where-Object { -not $_.Defender -and $_.Enabled })
+    if ($third.Count) {
+        $av = $third[0]
+        return [pscustomobject]@{ Status = $(if ($av.UpToDate) { 'ok' } else { 'warn' }); Name = $av.Name
+            Text = $(if ($av.UpToDate) { 'ativo' } else { 'desatualizado' }); Code = $(if ($av.UpToDate) { '' } else { 'antivirus_outdated' }) }
+    }
+    $mp = try { Get-MpComputerStatus -ErrorAction Stop } catch { $null }
+    if (-not $mp -or -not $mp.AntivirusEnabled) { return [pscustomobject]@{ Status = 'crit'; Name = 'Nenhum antivírus'; Text = 'desligado'; Code = 'antivirus_off' } }
+    if (-not $mp.RealTimeProtectionEnabled) { return [pscustomobject]@{ Status = 'warn'; Name = 'Microsoft Defender'; Text = 'sem tempo real'; Code = 'antivirus_realtime_off' } }
+    if ($mp.AntivirusSignatureAge -gt 3) { return [pscustomobject]@{ Status = 'warn'; Name = 'Microsoft Defender'; Text = "assinaturas com $($mp.AntivirusSignatureAge) dias"; Code = 'antivirus_outdated' } }
+    [pscustomobject]@{ Status = 'ok'; Name = 'Microsoft Defender'; Text = 'ativo'; Code = '' }
+}

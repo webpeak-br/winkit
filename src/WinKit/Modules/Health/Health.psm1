@@ -120,23 +120,10 @@ function Test-HealthBsod {
 }
 
 function Test-HealthDefender {
-    $mp = $null
-    try { $mp = Get-MpComputerStatus -ErrorAction Stop } catch { $mp = $null }
-    $other = @()
-    if ((Get-WinKitEnvironment).Edition -eq 'Desktop') {
-        $other = @(Get-CimInstance -Namespace root\SecurityCenter2 -ClassName AntiVirusProduct -ErrorAction SilentlyContinue | Where-Object displayName -notmatch 'Defender')
-    }
-    if (-not $mp -or -not $mp.AntivirusEnabled) {
-        if ($other.Count) { return New-WinKitResult -Check 'antivirus' -Status ok -Message "Antivírus ativo: $($other[0].displayName)." }
-        return New-WinKitResult -Check 'antivirus' -Status crit -Code 'antivirus_off' -Message 'Nenhum antivírus ativo.' -Fix 'Ative o Microsoft Defender.'
-    }
-    if (-not $mp.RealTimeProtectionEnabled) {
-        return New-WinKitResult -Check 'antivirus' -Status warn -Code 'antivirus_realtime_off' -Message 'Defender sem proteção em tempo real.' -Fix 'Ligue a proteção em tempo real.'
-    }
-    if ($mp.AntivirusSignatureAge -gt $script:Limits.SigWarnDays) {
-        return New-WinKitResult -Check 'antivirus' -Status warn -Code 'antivirus_outdated' -Message "Assinaturas do Defender com $($mp.AntivirusSignatureAge) dias." -Fix 'Atualize o Defender (Update-MpSignature).'
-    }
-    New-WinKitResult -Check 'antivirus' -Status ok -Message 'Defender ativo, em tempo real e atualizado.'
+    $av = Get-WinKitAntivirusStatus
+    $fix = @{ antivirus_off = 'Ative o Microsoft Defender ou instale um antivírus.'; antivirus_realtime_off = 'Ligue a proteção em tempo real.'
+        antivirus_outdated = 'Atualize as definições do antivírus.' }[$av.Code]
+    New-WinKitResult -Check 'antivirus' -Status $av.Status -Code $av.Code -Message "Antivírus: $($av.Name) ($($av.Text))." -Fix $(if ($fix) { $fix } else { '' })
 }
 
 function Test-HealthFirewall {

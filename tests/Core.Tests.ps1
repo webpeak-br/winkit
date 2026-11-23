@@ -161,3 +161,24 @@ Describe 'Ambiente' {
         $e.Edition | Should -BeIn @('Desktop', 'Server', 'ServerCore')
     }
 }
+
+Describe 'Antivírus' {
+    It 'decodifica o productState da Central de Segurança' {
+        (ConvertFrom-WinKitAvState -State 397568).Enabled | Should -BeTrue      # 0x061100: ligado, em dia
+        (ConvertFrom-WinKitAvState -State 397568).UpToDate | Should -BeTrue
+        (ConvertFrom-WinKitAvState -State 393472).Enabled | Should -BeFalse     # 0x060100: desligado
+        (ConvertFrom-WinKitAvState -State 397584).UpToDate | Should -BeFalse    # 0x061110: definições velhas
+    }
+    It 'antivírus de terceiros ativo vale mais que o Defender passivo' {
+        Mock -ModuleName WinKit Get-WinKitAntivirus { [pscustomobject]@{ Name = 'Bitdefender Endpoint Security Tools'; Enabled = $true; UpToDate = $true; Defender = $false } }
+        Mock -ModuleName WinKit Get-MpComputerStatus { [pscustomobject]@{ AntivirusEnabled = $true; RealTimeProtectionEnabled = $false } }
+        $s = Get-WinKitAntivirusStatus
+        $s.Status | Should -Be 'ok'
+        $s.Name | Should -Match 'Bitdefender'
+    }
+    It 'sem terceiros, Defender sem tempo real é atenção' {
+        Mock -ModuleName WinKit Get-WinKitAntivirus { @() }
+        Mock -ModuleName WinKit Get-MpComputerStatus { [pscustomobject]@{ AntivirusEnabled = $true; RealTimeProtectionEnabled = $false } }
+        (Get-WinKitAntivirusStatus).Code | Should -Be 'antivirus_realtime_off'
+    }
+}
