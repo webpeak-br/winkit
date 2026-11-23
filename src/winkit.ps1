@@ -42,6 +42,38 @@ if ($needsElevation -and -not (Test-WinKitAdmin)) {
     exit
 }
 
+# Abre a janela gráfica; se não der, explica o motivo e cai no menu de texto.
+function Open-WinKitWindow {
+    $why = ''
+    if ((Get-WinKitEnvironment).Edition -eq 'ServerCore') { $why = 'o Windows Server Core não tem interface gráfica' }
+    else {
+        try { Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase -ErrorAction Stop }
+        catch { $why = "o WPF não carregou ($($_.Exception.Message))" }
+    }
+    if (-not $why -and [Threading.Thread]::CurrentThread.ApartmentState -ne 'STA') {
+        # WPF precisa de STA; o Windows PowerShell 5.1 (sempre presente) abre assim.
+        Write-Host 'Abrindo a janela do WinKit em outra janela do PowerShell…' -ForegroundColor Cyan
+        Start-Process -FilePath "$env:windir\System32\WindowsPowerShell\v1.0\powershell.exe" -ArgumentList '-STA', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "`"$PSCommandPath`"", 'gui'
+        return
+    }
+    if (-not $why) {
+        try {
+            . (Join-Path $PSScriptRoot 'WinKit\Gui\WinKitGui.ps1')
+            Write-Host 'Abrindo a janela do WinKit… (esta janela mostra o log; pode deixar aberta)' -ForegroundColor Cyan
+            Show-WinKitGui
+            return
+        } catch {
+            $why = "a janela falhou: $($_.Exception.Message)"
+            $log = Join-Path (Get-WinKitDataRoot) 'gui-error.log'
+            "$(Get-Date -Format o) $($_ | Out-String) $($_.ScriptStackTrace)" | Add-Content -Path $log -Encoding UTF8
+            Write-Host "Detalhes em $log" -ForegroundColor DarkGray
+        }
+    }
+    Write-Host "Não foi possível abrir a janela: $why. Abrindo o menu de texto." -ForegroundColor Yellow
+    Start-Sleep -Seconds 2
+    Show-WinKitMenu
+}
+
 # Menu interativo (o que abre com "irm … | iex"): cada opção chama os mesmos comandos da linha de comando.
 function Show-WinKitMenu {
     $info = Get-WinKitEnvironment
@@ -54,6 +86,7 @@ function Show-WinKitMenu {
         Write-Host '  3  Abrir o último relatório'
         Write-Host '  4  Execuções anteriores e desfazer'
         Write-Host '  5  Módulos e perfis'
+        Write-Host '  6  Abrir a janela do WinKit'
         Write-Host '  0  Sair'
         $op = Read-Host "`nEscolha"
         switch ($op) {
@@ -69,6 +102,7 @@ function Show-WinKitMenu {
                 if ($id) { Undo-WinKitRun -RunId $id | Format-List | Out-Host }
             }
             '5' { Get-WinKitModule -Edition $info.Edition -Build $info.Build | Format-Table id, risk, description -AutoSize | Out-Host; Get-WinKitProfile | Format-Table Id, Description -AutoSize | Out-Host }
+            '6' { Open-WinKitWindow; continue }
             '0' { return }
             default { continue }
         }
@@ -102,17 +136,5 @@ switch ($Command) {
     'env' { if ($Json) { Get-WinKitEnvironment | ConvertTo-Json -Depth 5 } else { Get-WinKitEnvironment | Format-List } }
     'help' { Get-Help $PSCommandPath -Examples }
     'menu' { Show-WinKitMenu }
-    default {
-        # Janela gráfica quando o Windows tem interface (não existe no Server Core); senão, o menu de texto.
-        $hasWpf = (Get-WinKitEnvironment).Edition -ne 'ServerCore' -and (Test-Path "$env:windir\Microsoft.NET\Framework64\v4.0.30319\WPF\PresentationFramework.dll")
-        if (-not $hasWpf) { if ($Command -eq 'gui') { Write-Host 'Esta edição do Windows não tem interface gráfica; abrindo o menu.' -ForegroundColor Yellow }; Show-WinKitMenu; break }
-        if ([Threading.Thread]::CurrentThread.ApartmentState -ne 'STA') {
-            # WPF precisa de STA; o Windows PowerShell 5.1 (sempre presente) abre assim.
-            Start-Process -FilePath "$env:windir\System32\WindowsPowerShell\v1.0\powershell.exe" -ArgumentList '-STA', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "`"$PSCommandPath`"", 'gui'
-            break
-        }
-        . (Join-Path $PSScriptRoot 'WinKit\Gui\WinKitGui.ps1')
-        Write-Host 'Abrindo a janela do WinKit…' -ForegroundColor Cyan
-        Show-WinKitGui
-    }
+    default { Open-WinKitWindow }
 }

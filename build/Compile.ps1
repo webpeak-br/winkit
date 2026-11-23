@@ -52,6 +52,7 @@ try { Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force -ErrorAc
     Write-Host 'Peca ao administrador do dominio ou rode: powershell -ExecutionPolicy Bypass' -ForegroundColor Red
     return
 }
+Write-Host "WinKit $WinKitVersion" -ForegroundColor Cyan
 $app = Install-WinKitApp
 $cli = Join-Path $app 'winkit.ps1'
 $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
