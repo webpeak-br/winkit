@@ -1,0 +1,54 @@
+[
+  { "id": "Google.Chrome", "name": "Google Chrome", "category": "Navegadores" },
+  { "id": "Mozilla.Firefox", "name": "Firefox", "category": "Navegadores" },
+  { "id": "Brave.Brave", "name": "Brave", "category": "Navegadores" },
+  { "id": "Microsoft.Edge", "name": "Microsoft Edge", "category": "Navegadores" },
+
+  { "id": "7zip.7zip", "name": "7-Zip", "category": "Utilitários" },
+  { "id": "Notepad++.Notepad++", "name": "Notepad++", "category": "Utilitários" },
+  { "id": "Microsoft.PowerToys", "name": "PowerToys", "category": "Utilitários" },
+  { "id": "ShareX.ShareX", "name": "ShareX (captura de tela)", "category": "Utilitários" },
+  { "id": "Greenshot.Greenshot", "name": "Greenshot", "category": "Utilitários" },
+  { "id": "voidtools.Everything", "name": "Everything (busca de arquivos)", "category": "Utilitários" },
+  { "id": "CrystalDewWorld.CrystalDiskInfo", "name": "CrystalDiskInfo", "category": "Utilitários" },
+  { "id": "CPUID.HWMonitor", "name": "HWMonitor", "category": "Utilitários" },
+
+  { "id": "TheDocumentFoundation.LibreOffice", "name": "LibreOffice", "category": "Escritório" },
+  { "id": "Adobe.Acrobat.Reader.64-bit", "name": "Adobe Acrobat Reader", "category": "Escritório" },
+  { "id": "SumatraPDF.SumatraPDF", "name": "SumatraPDF", "category": "Escritório" },
+  { "id": "Microsoft.Teams", "name": "Microsoft Teams", "category": "Comunicação" },
+  { "id": "Zoom.Zoom", "name": "Zoom", "category": "Comunicação" },
+  { "id": "SlackTechnologies.Slack", "name": "Slack", "category": "Comunicação" },
+  { "id": "Discord.Discord", "name": "Discord", "category": "Comunicação" },
+
+  { "id": "AnyDeskSoftwareGmbH.AnyDesk", "name": "AnyDesk", "category": "Acesso remoto" },
+  { "id": "TeamViewer.TeamViewer", "name": "TeamViewer", "category": "Acesso remoto" },
+  { "id": "RustDesk.RustDesk", "name": "RustDesk", "category": "Acesso remoto" },
+  { "id": "PuTTY.PuTTY", "name": "PuTTY", "category": "Acesso remoto" },
+  { "id": "WinSCP.WinSCP", "name": "WinSCP", "category": "Acesso remoto" },
+  { "id": "TimKosse.FileZilla.Client", "name": "FileZilla", "category": "Acesso remoto" },
+
+  { "id": "Microsoft.VisualStudioCode", "name": "Visual Studio Code", "category": "Desenvolvimento" },
+  { "id": "Git.Git", "name": "Git", "category": "Desenvolvimento" },
+  { "id": "OpenJS.NodeJS.LTS", "name": "Node.js LTS", "category": "Desenvolvimento" },
+  { "id": "Python.Python.3.12", "name": "Python 3.12", "category": "Desenvolvimento" },
+  { "id": "Microsoft.WindowsTerminal", "name": "Windows Terminal", "category": "Desenvolvimento" },
+  { "id": "Microsoft.PowerShell", "name": "PowerShell 7", "category": "Desenvolvimento" },
+  { "id": "Docker.DockerDesktop", "name": "Docker Desktop", "category": "Desenvolvimento" },
+
+  { "id": "Microsoft.VCRedist.2015+.x64", "name": "Visual C++ 2015-2022 (x64)", "category": "Runtimes" },
+  { "id": "Microsoft.DotNet.DesktopRuntime.8", "name": ".NET Desktop Runtime 8", "category": "Runtimes" },
+  { "id": "EclipseAdoptium.Temurin.21.JRE", "name": "Java 21 (Temurin JRE)", "category": "Runtimes" },
+
+  { "id": "Microsoft.Sysinternals.Suite", "name": "Sysinternals Suite", "category": "Administração" },
+  { "id": "WiresharkFoundation.Wireshark", "name": "Wireshark", "category": "Administração" },
+  { "id": "Insecure.Nmap", "name": "Nmap", "category": "Administração" },
+  { "id": "Bitwarden.Bitwarden", "name": "Bitwarden", "category": "Administração" },
+  { "id": "KeePassXCTeam.KeePassXC", "name": "KeePassXC", "category": "Administração" },
+
+  { "id": "VideoLAN.VLC", "name": "VLC", "category": "Mídia" },
+  { "id": "Spotify.Spotify", "name": "Spotify", "category": "Mídia" },
+  { "id": "OBSProject.OBSStudio", "name": "OBS Studio", "category": "Mídia" },
+  { "id": "Google.GoogleDrive", "name": "Google Drive", "category": "Mídia" },
+  { "id": "Dropbox.Dropbox", "name": "Dropbox", "category": "Mídia" }
+]

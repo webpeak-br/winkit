@@ -11,6 +11,7 @@ function Invoke-WinKit {
         [string]$ProfileName,
         [string[]]$Module = @(),
         [ValidateSet('test', 'invoke', 'report')][string]$Mode = 'test',
+        [hashtable]$ModuleParams = @{},   # parâmetros dos módulos quando se usa -Module (ex.: @{ Install = @('7zip.7zip') })
         [switch]$DryRun,
         [switch]$Force,
         [switch]$NoReport
@@ -22,7 +23,7 @@ function Invoke-WinKit {
         if ($p.Platforms.Count -and $p.Platforms -notcontains $envInfo.Edition) { throw "O perfil $ProfileName não se aplica a $($envInfo.Edition)." }
         $p.Steps
     } else {
-        $Module | ForEach-Object { [pscustomobject]@{ module = $_; mode = $Mode; params = $null } }
+        $Module | ForEach-Object { [pscustomobject]@{ module = $_; mode = $Mode; params = [pscustomobject]$ModuleParams } }
     }
     $needsAdmin = @($steps | Where-Object { $_.mode -eq 'invoke' }).Count -gt 0
     if ($needsAdmin -and -not $DryRun) { Assert-WinKitAdmin }

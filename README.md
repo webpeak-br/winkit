@@ -22,7 +22,7 @@ Abra o **PowerShell como administrador** e rode:
 
 A primeira parte força TLS 1.2: sem ela, o Windows PowerShell 5.1 de algumas máquinas tenta um TLS antigo e o GitHub fecha a conexão.
 
-Abre um menu com diagnóstico, reparo, relatórios e desfazer. Se o PowerShell não estiver como administrador, o WinKit pede a elevação sozinho. O arquivo é gerado a partir do código deste repositório a cada versão; o SHA-256 está em `SHA256SUMS.txt` na release.
+Abre a **janela do WinKit**: visão geral da máquina, diagnóstico com semáforo, instalação de aplicativos com um clique, atualizações do Windows, manutenção e histórico com desfazer. No Server Core (sem interface gráfica) abre um menu de texto. Se o PowerShell não estiver como administrador, o WinKit pede a elevação sozinho. O arquivo é gerado a partir do código deste repositório a cada versão; o SHA-256 está em `SHA256SUMS.txt` na release.
 
 Para automação, passe o comando direto:
 ```powershell

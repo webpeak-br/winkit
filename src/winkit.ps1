@@ -2,6 +2,8 @@
 .SYNOPSIS
   Linha de comando do WinKit.
 .EXAMPLE
+  winkit                   (abre a janela; no Server Core, o menu)
+  winkit menu              (menu de texto)
   winkit run -Profile Server-Base -DryRun
   winkit run -Module Health
   winkit run -Module Updates -Mode invoke
@@ -12,7 +14,7 @@
   winkit env               (ambiente detectado)
 #>
 param(
-    [Parameter(Position = 0)][ValidateSet('menu', 'run', 'undo', 'report', 'list', 'env', 'runs', 'help')][string]$Command = 'menu',
+    [Parameter(Position = 0)][ValidateSet('auto', 'gui', 'menu', 'run', 'undo', 'report', 'list', 'env', 'runs', 'help')][string]$Command = 'auto',
     [Alias('Profile')][string]$ProfileName,
     [string[]]$Module = @(),
     [ValidateSet('test', 'invoke', 'report')][string]$Mode = 'test',
@@ -26,7 +28,7 @@ Import-Module (Join-Path $PSScriptRoot 'WinKit\WinKit.psd1') -Force
 # Pelo WinKit.cmd (-File) uma lista chega como "A,B": separa de novo.
 $Module = @($Module | ForEach-Object { $_ -split ',' } | Where-Object { $_ })
 
-$needsElevation = ($Command -eq 'menu') -or ($Command -eq 'undo') -or ($Command -eq 'run' -and $Mode -eq 'invoke' -and -not $DryRun) -or ($Command -eq 'run' -and $ProfileName -and -not $DryRun)
+$needsElevation = ($Command -in 'auto', 'gui', 'menu') -or ($Command -eq 'undo') -or ($Command -eq 'run' -and $Mode -eq 'invoke' -and -not $DryRun) -or ($Command -eq 'run' -and $ProfileName -and -not $DryRun)
 if ($needsElevation -and -not (Test-WinKitAdmin)) {
     Write-Host 'Pedindo permissão de administrador…' -ForegroundColor Yellow
     # Repassa os mesmos parâmetros para a janela elevada.
@@ -99,5 +101,18 @@ switch ($Command) {
     'runs' { Get-WinKitRunList | Format-Table id, profile, dryRun, changes, reboot -AutoSize }
     'env' { if ($Json) { Get-WinKitEnvironment | ConvertTo-Json -Depth 5 } else { Get-WinKitEnvironment | Format-List } }
     'help' { Get-Help $PSCommandPath -Examples }
-    default { Show-WinKitMenu }
+    'menu' { Show-WinKitMenu }
+    default {
+        # Janela gráfica quando o Windows tem interface (não existe no Server Core); senão, o menu de texto.
+        $hasWpf = (Get-WinKitEnvironment).Edition -ne 'ServerCore' -and (Test-Path "$env:windir\Microsoft.NET\Framework64\v4.0.30319\WPF\PresentationFramework.dll")
+        if (-not $hasWpf) { if ($Command -eq 'gui') { Write-Host 'Esta edição do Windows não tem interface gráfica; abrindo o menu.' -ForegroundColor Yellow }; Show-WinKitMenu; break }
+        if ([Threading.Thread]::CurrentThread.ApartmentState -ne 'STA') {
+            # WPF precisa de STA; o Windows PowerShell 5.1 (sempre presente) abre assim.
+            Start-Process -FilePath "$env:windir\System32\WindowsPowerShell\v1.0\powershell.exe" -ArgumentList '-STA', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "`"$PSCommandPath`"", 'gui'
+            break
+        }
+        . (Join-Path $PSScriptRoot 'WinKit\Gui\WinKitGui.ps1')
+        Write-Host 'Abrindo a janela do WinKit…' -ForegroundColor Cyan
+        Show-WinKitGui
+    }
 }

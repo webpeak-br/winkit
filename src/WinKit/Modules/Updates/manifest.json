@@ -1,0 +1,23 @@
+{
+  "id": "Updates",
+  "name": "Atualizações",
+  "description": "Procura e instala atualizações do Windows Update (inclusive drivers e Microsoft Update quando configurado) e informa se precisa reiniciar.",
+  "version": "0.1.0",
+  "platforms": ["Desktop", "Server", "ServerCore"],
+  "minBuild": 14393,
+  "risk": "low",
+  "requiresReboot": true,
+  "dependsOn": [],
+  "tools": [],
+  "functions": {
+    "test": "Test-WinKitUpdate",
+    "invoke": "Invoke-WinKitUpdate",
+    "undo": null,
+    "report": null
+  },
+  "parameters": {
+    "IncludeDrivers": { "type": "bool", "default": false, "description": "Inclui drivers oferecidos pelo Windows Update" },
+    "OnlySecurity": { "type": "bool", "default": false, "description": "Invoke: instala só atualizações de segurança e críticas" },
+    "UpdateIds": { "type": "string[]", "default": [], "description": "Invoke: instala só estas (UpdateID); vazio = todas as encontradas" }
+  }
+}

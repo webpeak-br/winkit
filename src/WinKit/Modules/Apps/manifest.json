@@ -1,0 +1,22 @@
+{
+  "id": "Apps",
+  "name": "Aplicativos",
+  "description": "Instala e atualiza programas populares pelo winget (fontes oficiais), mostrando o que já está instalado.",
+  "version": "0.1.0",
+  "platforms": ["Desktop", "Server"],
+  "minBuild": 17763,
+  "risk": "low",
+  "requiresReboot": false,
+  "dependsOn": [],
+  "tools": ["winget"],
+  "functions": {
+    "test": "Test-WinKitApp",
+    "invoke": "Invoke-WinKitApp",
+    "undo": "Undo-WinKitApp",
+    "report": null
+  },
+  "parameters": {
+    "Install": { "type": "string[]", "default": [], "description": "Ids winget a instalar (ex.: 7zip.7zip)" },
+    "UpgradeAll": { "type": "bool", "default": false, "description": "Atualiza todos os programas que o winget conhece" }
+  }
+}

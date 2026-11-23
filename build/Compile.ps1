@@ -11,7 +11,7 @@ param([string]$OutDir = (Join-Path $PSScriptRoot '..\dist'))
 $ErrorActionPreference = 'Stop'
 $root = Resolve-Path (Join-Path $PSScriptRoot '..\src')
 $version = (Import-PowerShellDataFile (Join-Path $root 'WinKit\WinKit.psd1')).ModuleVersion
-$files = Get-ChildItem -Path $root -Recurse -File | Where-Object { $_.Extension -in '.ps1', '.psm1', '.psd1', '.json' }
+$files = Get-ChildItem -Path $root -Recurse -File | Where-Object { $_.Extension -in '.ps1', '.psm1', '.psd1', '.json', '.xaml' }
 
 $entries = foreach ($f in $files | Sort-Object FullName) {
     $rel = $f.FullName.Substring($root.Path.Length + 1).Replace('\', '/')
