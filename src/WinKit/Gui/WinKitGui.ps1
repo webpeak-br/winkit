@@ -552,10 +552,11 @@ function Show-GuiDriver {
     $grid.Background = '#1E1D24'; $grid.RowBackground = '#1E1D24'; $grid.AlternatingRowBackground = '#23222A'; $grid.Foreground = '#ECEAF2'
     $grid.BorderBrush = '#2E2C38'; $grid.GridLinesVisibility = 'None'; $grid.CanUserAddRows = $false
     $hs = New-Object Windows.Style ([Windows.Controls.Primitives.DataGridColumnHeader])
-    foreach ($kv in @{ Background = '#26242E'; Foreground = '#A3A0B3'; Padding = '8,6'; BorderThickness = '0' }.GetEnumerator()) {
-        $prop = [Windows.Controls.Primitives.DataGridColumnHeader]::($kv.Key + 'Property')
-        $conv = [ComponentModel.TypeDescriptor]::GetConverter($prop.PropertyType)
-        $hs.Setters.Add((New-Object Windows.Setter ($prop, $conv.ConvertFromInvariantString($kv.Value))))
+    $H = [Windows.Controls.Primitives.DataGridColumnHeader]
+    $setters = @(@($H::BackgroundProperty, '#26242E'), @($H::ForegroundProperty, '#A3A0B3'), @($H::PaddingProperty, '8,6'), @($H::BorderThicknessProperty, '0'))
+    foreach ($pair in $setters) {
+        $conv = [ComponentModel.TypeDescriptor]::GetConverter($pair[0].PropertyType)
+        $hs.Setters.Add((New-Object Windows.Setter ($pair[0], $conv.ConvertFromInvariantString($pair[1]))))
     }
     $grid.ColumnHeaderStyle = $hs
     [void]$list.Children.Add($grid)
