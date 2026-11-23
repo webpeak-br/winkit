@@ -1,0 +1,10 @@
+{
+  "id": "Reparo-Sistema",
+  "description": "Diagnóstico, reparo da imagem do Windows (DISM e SFC) e diagnóstico de novo para comparar",
+  "extends": "Diagnostico",
+  "platforms": ["Desktop", "Server", "ServerCore"],
+  "steps": [
+    { "module": "Health", "mode": "invoke" },
+    { "module": "Health", "mode": "test", "params": { "CheckImageHealth": true } }
+  ]
+}

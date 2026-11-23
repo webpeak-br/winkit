@@ -1,0 +1,7 @@
+# Execuções, cache e relatórios locais
+runs/
+cache/
+*.log
+# Nunca versionar
+CLAUDE.md
+.agentes

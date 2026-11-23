@@ -1,0 +1,9 @@
+{
+  "id": "Diagnostico",
+  "description": "Só diagnóstico, nada é alterado: saúde, discos, telas azuis, segurança e drivers",
+  "extends": null,
+  "platforms": ["Desktop", "Server", "ServerCore"],
+  "steps": [
+    { "module": "Health", "mode": "test" }
+  ]
+}

@@ -1,0 +1,25 @@
+{
+  "id": "Health",
+  "name": "Diagnóstico e saúde",
+  "description": "Discos (espaço e SMART), erros críticos do Event Log, telas azuis, reinício pendente, Defender, firewall, dispositivos sem driver e integridade do sistema.",
+  "version": "0.1.0",
+  "platforms": ["Desktop", "Server", "ServerCore"],
+  "minBuild": 14393,
+  "risk": "low",
+  "requiresReboot": false,
+  "dependsOn": [],
+  "tools": [],
+  "functions": {
+    "test": "Test-WinKitHealth",
+    "invoke": "Invoke-WinKitHealth",
+    "undo": null,
+    "report": null
+  },
+  "parameters": {
+    "EventLogHours": { "type": "int", "default": 72, "description": "Janela de análise do Event Log, em horas" },
+    "BsodDays": { "type": "int", "default": 30, "description": "Janela de telas azuis analisadas, em dias" },
+    "CheckImageHealth": { "type": "bool", "default": true, "description": "Confere a integridade da imagem do Windows (DISM CheckHealth, rápido)" },
+    "RunDism": { "type": "bool", "default": true, "description": "Invoke: DISM /RestoreHealth (pode levar 15 a 40 min)" },
+    "RunSfc": { "type": "bool", "default": true, "description": "Invoke: sfc /scannow depois do DISM (10 a 30 min)" }
+  }
+}

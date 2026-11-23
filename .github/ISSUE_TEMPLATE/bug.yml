@@ -1,0 +1,36 @@
+name: Problema
+description: Algo não funcionou como esperado
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: O que aconteceu
+      description: Comando rodado, o que você esperava e o que aconteceu. Anexe o log.txt da execução (%ProgramData%\WinKit\runs\<RunId>\) sem dados sensíveis.
+    validations:
+      required: true
+  - type: textarea
+    id: computerinfo
+    attributes:
+      label: Get-ComputerInfo
+      description: "Get-ComputerInfo | Select-Object WindowsProductName, WindowsVersion, OsBuildNumber, OsArchitecture, CsManufacturer, CsModel"
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: baseboard
+    attributes:
+      label: Placa-mãe
+      description: "Get-CimInstance Win32_BaseBoard | Format-List Manufacturer, Product, Version"
+      render: text
+  - type: textarea
+    id: devices
+    attributes:
+      label: Dispositivos com erro
+      description: "Get-PnpDevice | Where-Object Status -eq 'Error' | Format-List FriendlyName, InstanceId, HardwareID"
+      render: text
+  - type: input
+    id: version
+    attributes:
+      label: Versão do WinKit e do PowerShell
+      placeholder: "WinKit 0.1.0, PowerShell 5.1.26100"
