@@ -9,11 +9,12 @@ Describe 'Interface gráfica' -Skip:(-not $script:canWpf) {
         $gui = Join-Path $PSScriptRoot '..\src\WinKit\Gui'
         $xaml = [xml](Get-Content (Join-Path $gui 'MainWindow.xaml') -Raw -Encoding UTF8)
         $win = [Windows.Markup.XamlReader]::Load((New-Object System.Xml.XmlNodeReader $xaml))
-        $code = Get-Content (Join-Path $gui 'WinKitGui.ps1') -Raw -Encoding UTF8
+        $script:guiFile = Join-Path $gui 'WinKitGui.ps1'
     }
     It 'o XAML carrega' { $win | Should -Not -BeNullOrEmpty }
     It 'todo controle citado no código existe na janela' {
-        $names = [regex]::Matches($code, '(?:\$ui|Ui)\.([A-Z][A-Za-z]+)') | ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique
+        $src = [IO.File]::ReadAllText($script:guiFile)
+        $names = [regex]::Matches($src, '(?:\$ui|Ui)\.([A-Z][A-Za-z]+)') | ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique
         $names.Count | Should -BeGreaterThan 15
         foreach ($n in $names) { $win.FindName($n) | Should -Not -BeNullOrEmpty -Because "o código usa $n" }
     }
@@ -22,7 +23,7 @@ Describe 'Interface gráfica' -Skip:(-not $script:canWpf) {
     }
     It 'o script da interface não tem erro de sintaxe' {
         $errors = $null
-        [void][System.Management.Automation.Language.Parser]::ParseInput($code, [ref]$null, [ref]$errors)
+        [void][System.Management.Automation.Language.Parser]::ParseFile($script:guiFile, [ref]$null, [ref]$errors)
         $errors | Should -BeNullOrEmpty
     }
 }
