@@ -33,21 +33,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Pester (${{ matrix.shell }} em ${{ matrix.os }})
-        shell: ${{ matrix.shell }}
-        run: |
-          Set-PSRepository PSGallery -InstallationPolicy Trusted
-          Install-Module Pester -MinimumVersion 5.5.0 -Force -Scope CurrentUser -SkipPublisherCheck
-          Import-Module Pester -MinimumVersion 5.5.0
-          $c = New-PesterConfiguration
-          $c.Run.Path = 'tests'
-          $c.Run.Exit = $true
-          $c.Output.Verbosity = 'Detailed'
-          Invoke-Pester -Configuration $c
+        shell: pwsh
+        run: ${{ matrix.shell }} -NoProfile -ExecutionPolicy Bypass -File ./tests/run.ps1
       - name: Diagnóstico real nesta máquina (fumaça)
-        shell: ${{ matrix.shell }}
+        shell: pwsh
         run: |
-          $env:WINKIT_DATA = "$env:RUNNER_TEMP\winkit"
-          Import-Module ./src/WinKit/WinKit.psd1
-          $out = Invoke-WinKit -Module Health -NoReport
-          $out.Results | Format-Table Status, Check, Message -AutoSize -Wrap
-          if (-not $out.Results.Count) { throw 'Health não devolveu resultados' }
+          ${{ matrix.shell }} -NoProfile -ExecutionPolicy Bypass -Command "`$env:WINKIT_DATA = '$env:RUNNER_TEMP\winkit'; Import-Module ./src/WinKit/WinKit.psd1; `$o = Invoke-WinKit -Module Health -NoReport; `$o.Results | Format-Table Status, Check, Message -AutoSize -Wrap | Out-String -Width 200; if (-not `$o.Results.Count) { exit 1 }"
