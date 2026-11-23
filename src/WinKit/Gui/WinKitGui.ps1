@@ -23,7 +23,7 @@ function Show-WinKitGui {
     $script:Colors = @{ ok = '#3ECF8E'; warn = '#F5B041'; crit = '#FF5C6C'; info = '#7AA2FF' }
     $script:StatusLabel = @{ ok = 'OK'; warn = 'Atenção'; crit = 'Crítico'; info = 'Info' }
 
-    $ui.Version.Text = "WinKit $((Get-Module WinKit).Version)`ngithub.com/webpeak-br/winkit"
+    $ui.Version.Text = "WinKit $((Get-Module WinKit | Sort-Object Version -Descending | Select-Object -First 1).Version)`ngithub.com/webpeak-br/winkit"
     $info = Get-WinKitEnvironment
     $ui.MachineName.Text = $info.ComputerName
     $ui.MachineInfo.Text = "$($info.Caption) · build $($info.Build) · $($info.Edition)$(if ($info.IsVirtual) { ' · máquina virtual' }) · $($info.Manufacturer) $($info.Model)$(if ($info.DomainJoined) { " · domínio $($info.Domain)" })"

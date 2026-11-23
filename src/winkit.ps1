@@ -24,6 +24,8 @@ param(
     [switch]$Json
 )
 $ErrorActionPreference = 'Stop'
+# Rodar uma versão nova na mesma janela do PowerShell deixaria as duas carregadas: descarrega a anterior.
+Get-Module WinKit | Remove-Module -Force -ErrorAction SilentlyContinue
 Import-Module (Join-Path $PSScriptRoot 'WinKit\WinKit.psd1') -Force
 # Pelo WinKit.cmd (-File) uma lista chega como "A,B": separa de novo.
 $Module = @($Module | ForEach-Object { $_ -split ',' } | Where-Object { $_ })
