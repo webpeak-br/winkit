@@ -6,7 +6,10 @@ $script:GuiPages = 'PageOverview', 'PageHealth', 'PageApps', 'PageUpdates', 'Pag
 
 function Show-WinKitGui {
     [CmdletBinding()]
-    param()
+    param(
+        [string]$Screenshot,     # CI: abre, espera os dados, salva um PNG de cada página e fecha
+        [int]$ScreenshotWait = 20
+    )
     Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase
     $xaml = [xml](Get-Content (Join-Path $PSScriptRoot 'MainWindow.xaml') -Raw -Encoding UTF8)
     $win = [Windows.Markup.XamlReader]::Load((New-Object System.Xml.XmlNodeReader $xaml))
@@ -101,8 +104,41 @@ function Show-WinKitGui {
 
     Show-GuiPage 'PageOverview'
     Update-GuiCard
+    if ($Screenshot) { Save-GuiScreenshot -Path $Screenshot -Wait $ScreenshotWait; $timer.Stop(); return }
     [void]$win.ShowDialog()
     $timer.Stop()
+}
+
+# Processa os eventos da janela por alguns segundos (sem ShowDialog), para o CI conseguir fotografar.
+function Wait-GuiEvent {
+    param([double]$Seconds)
+    $until = (Get-Date).AddSeconds($Seconds)
+    while ((Get-Date) -lt $until) {
+        $frame = New-Object Windows.Threading.DispatcherFrame
+        [void][Windows.Threading.Dispatcher]::CurrentDispatcher.BeginInvoke([Windows.Threading.DispatcherPriority]::Background,
+            [Windows.Threading.DispatcherOperationCallback] { param($f) $f.Continue = $false; $null }, $frame)
+        [Windows.Threading.Dispatcher]::PushFrame($frame)
+        Start-Sleep -Milliseconds 100
+    }
+}
+
+function Save-GuiScreenshot {
+    param([string]$Path, [int]$Wait)
+    $win = $script:Gui.Win
+    $win.Show()
+    Wait-GuiEvent $Wait
+    $base = [IO.Path]::Combine([IO.Path]::GetDirectoryName($Path), [IO.Path]::GetFileNameWithoutExtension($Path))
+    foreach ($p in 'PageOverview', 'PageApps', 'PageMaint') {
+        Show-GuiPage $p
+        Wait-GuiEvent $(if ($p -eq 'PageApps') { 25 } else { 2 })
+        $bmp = New-Object Windows.Media.Imaging.RenderTargetBitmap ([int]$win.ActualWidth), ([int]$win.ActualHeight), 96, 96, ([Windows.Media.PixelFormats]::Pbgra32)
+        $bmp.Render($win)
+        $enc = New-Object Windows.Media.Imaging.PngBitmapEncoder
+        $enc.Frames.Add([Windows.Media.Imaging.BitmapFrame]::Create($bmp))
+        $fs = [IO.File]::Create("$base-$p.png")
+        try { $enc.Save($fs) } finally { $fs.Close() }
+    }
+    $win.Close()
 }
 
 function Show-GuiPage {

@@ -66,3 +66,21 @@ jobs:
         with:
           name: winkit
           path: dist/
+
+  screenshot:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fotografa a janela (Windows PowerShell, STA)
+        shell: powershell
+        run: |
+          $env:WINKIT_DATA = "$env:RUNNER_TEMP\winkit"
+          New-Item -ItemType Directory shots | Out-Null
+          Import-Module ./src/WinKit/WinKit.psd1
+          . ./src/WinKit/Gui/WinKitGui.ps1
+          Show-WinKitGui -Screenshot "$PWD\shots\winkit.png" -ScreenshotWait 25
+          Get-ChildItem shots
+      - uses: actions/upload-artifact@v4
+        with:
+          name: screenshots
+          path: shots/
