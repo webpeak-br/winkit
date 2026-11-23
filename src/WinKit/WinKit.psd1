@@ -8,7 +8,16 @@
     Description       = 'Prepara, otimiza, protege e diagnostica Windows 10/11 e Windows Server 2016-2025 (inclusive Server Core), com DryRun e undo.'
     PowerShellVersion = '5.1'
     CompatiblePSEditions = @('Desktop', 'Core')
-    FunctionsToExport = '*'
+    FunctionsToExport = @(
+        'Invoke-WinKit', 'New-WinKitRestorePoint', 'Write-WinKitLog', 'Get-WinKitDataRoot', 'New-WinKitRun', 'Get-WinKitRun',
+        'Complete-WinKitRun', 'Get-WinKitRunList', 'Test-WinKitAdmin', 'Assert-WinKitAdmin', 'Start-WinKitElevated', 'Get-WinKitEdition',
+        'Get-WinKitEnvironment', 'Add-WinKitJournal', 'Save-WinKitJournal', 'Test-WinKitDryRun', 'Get-WinKitRegistryValue',
+        'Set-WinKitRegistryValue', 'Set-WinKitServiceStartup', 'Add-WinKitCustomChange', 'Undo-WinKitEntry', 'Undo-WinKitRun',
+        'Invoke-WinKitProcess', 'Get-WinKitCacheDir', 'Test-WinKitSignature', 'Test-WinKitDownloadedFile', 'Get-WinKitDownload',
+        'Test-WinKitManifest', 'Get-WinKitModule', 'Import-WinKitModuleCode', 'Invoke-WinKitModule', 'Resolve-WinKitParameter',
+        'New-WinKitResult', 'Get-WinKitProfileDirectory', 'Read-WinKitProfileFile', 'Get-WinKitProfile', 'ConvertTo-WinKitHashtable',
+        'Export-WinKitProfile', 'Get-WinKitOverallStatus', 'Write-WinKitReportConsole', 'ConvertTo-WinKitHtml', 'Export-WinKitReport'
+    )
     CmdletsToExport   = @()
     VariablesToExport = @()
     AliasesToExport   = @()

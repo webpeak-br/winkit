@@ -45,6 +45,11 @@ function Test-HealthDiskSpace {
     }
 }
 
+# Discos físicos (isolado: o Pester não consegue simular os comandos do módulo Storage).
+function Get-HealthDiskList {
+    @(Get-PhysicalDisk -ErrorAction SilentlyContinue)
+}
+
 # Contadores de confiabilidade de um disco (isolado para os testes simularem sem um disco de verdade).
 function Get-HealthReliability {
     param($Disk)
@@ -53,7 +58,7 @@ function Get-HealthReliability {
 
 # Saúde física: Storage (Get-PhysicalDisk + contadores de confiabilidade) e o aviso de falha do SMART (root\wmi).
 function Test-HealthPhysicalDisk {
-    $disks = @(Get-PhysicalDisk -ErrorAction SilentlyContinue)
+    $disks = @(Get-HealthDiskList)
     if (-not $disks.Count) { return New-WinKitResult -Check 'disk_health' -Status info -Message 'Não foi possível ler os discos físicos (máquina virtual ou sem acesso).' }
     $predict = @(Get-CimInstance -Namespace root\wmi -ClassName MSStorageDriver_FailurePredictStatus -ErrorAction SilentlyContinue | Where-Object PredictFailure)
     foreach ($d in $disks) {
@@ -141,7 +146,7 @@ function Test-HealthFirewall {
 }
 
 # Dispositivos com problema. Código 28 = sem driver; os demais são driver com erro ou desativado.
-function Test-HealthDevices {
+function Test-HealthDevice {
     $bad = @(Get-CimInstance -ClassName Win32_PnPEntity -Filter 'ConfigManagerErrorCode<>0' -ErrorAction SilentlyContinue |
         Where-Object { $_.ConfigManagerErrorCode -ne 22 })   # 22 = desativado de propósito
     if (-not $bad.Count) { return New-WinKitResult -Check 'devices' -Status ok -Message 'Todos os dispositivos com driver funcionando.' }
@@ -151,7 +156,7 @@ function Test-HealthDevices {
         -Message "$($bad.Count) dispositivo(s) com problema$(if ($missing.Count) { ", $($missing.Count) sem driver" })." -Fix 'Rode o módulo Drivers para localizar e instalar.'
 }
 
-function Test-HealthUpdates {
+function Test-HealthUpdate {
     $last = Get-HotFix -ErrorAction SilentlyContinue | Where-Object InstalledOn | Sort-Object InstalledOn -Descending | Select-Object -First 1
     if (-not $last) { return New-WinKitResult -Check 'updates' -Status info -Message 'Não foi possível ler o histórico de atualizações.' }
     $days = [math]::Floor(((Get-Date) - $last.InstalledOn).TotalDays)
@@ -190,17 +195,18 @@ function Test-HealthTemperature {
 function Test-WinKitHealth {
     [CmdletBinding()]
     param([int]$EventLogHours = 72, [int]$BsodDays = 30, [bool]$CheckImageHealth = $true)
+    $hours = $EventLogHours; $days = $BsodDays   # usados dentro dos blocos abaixo
     $checks = [ordered]@{
         'Tempo ligado' = { Get-HealthUptime }
         'Reinício pendente' = { Test-HealthPendingReboot }
         'Espaço em disco' = { Test-HealthDiskSpace }
         'Saúde dos discos' = { Test-HealthPhysicalDisk }
-        'Event Log' = { Test-HealthEventLog -Hours $EventLogHours }
-        'Telas azuis' = { Test-HealthBsod -Days $BsodDays }
+        'Event Log' = { Test-HealthEventLog -Hours $hours }
+        'Telas azuis' = { Test-HealthBsod -Days $days }
         'Antivírus' = { Test-HealthDefender }
         'Firewall' = { Test-HealthFirewall }
-        'Dispositivos' = { Test-HealthDevices }
-        'Atualizações' = { Test-HealthUpdates }
+        'Dispositivos' = { Test-HealthDevice }
+        'Atualizações' = { Test-HealthUpdate }
         'Memória' = { Test-HealthMemory }
         'Temperatura' = { Test-HealthTemperature }
     }

@@ -16,6 +16,17 @@ function Test-WinKitSignature {
     [pscustomobject]@{ Valid = ($sig.Status -eq 'Valid') -and $signerOk; Status = "$($sig.Status)"; Subject = $subject; SignerMatches = $signerOk }
 }
 
+# Devolve o motivo da recusa ou vazio se o arquivo confere com o hash e o assinante esperados.
+function Test-WinKitDownloadedFile {
+    param([Parameter(Mandatory)][string]$Path, [string]$Sha256, [string[]]$ExpectedSigner = @(), [bool]$RequireSignature = $false)
+    if ($Sha256 -and (Get-FileHash -Path $Path -Algorithm SHA256).Hash -ne $Sha256.ToUpper()) { return 'SHA-256 diferente do esperado' }
+    if ($RequireSignature -or $ExpectedSigner.Count) {
+        $s = Test-WinKitSignature -Path $Path -ExpectedSigner $ExpectedSigner
+        if (-not $s.Valid) { return "assinatura inválida ($($s.Status), $($s.Subject))" }
+    }
+    return ''
+}
+
 function Get-WinKitDownload {
     param(
         [Parameter(Mandatory)][string]$Url,
@@ -30,16 +41,8 @@ function Get-WinKitDownload {
     if ($FileName -notmatch '^[\w.\- ()]+$') { throw "Nome de arquivo inválido: $FileName" }
     $dest = Join-Path (Get-WinKitCacheDir) $FileName
 
-    $valid = {
-        param($f)
-        if ($Sha256 -and (Get-FileHash -Path $f -Algorithm SHA256).Hash -ne $Sha256.ToUpper()) { return 'SHA-256 diferente do esperado' }
-        if ($RequireSignature -or $ExpectedSigner.Count) {
-            $s = Test-WinKitSignature -Path $f -ExpectedSigner $ExpectedSigner
-            if (-not $s.Valid) { return "assinatura inválida ($($s.Status), $($s.Subject))" }
-        }
-        return ''
-    }
-    if ((Test-Path $dest) -and -not (& $valid $dest)) { Write-WinKitLog "Usando cache: $FileName" -Level Debug; return $dest }
+    $check = @{ Sha256 = $Sha256; ExpectedSigner = $ExpectedSigner; RequireSignature = [bool]$RequireSignature }
+    if ((Test-Path $dest) -and -not (Test-WinKitDownloadedFile -Path $dest @check)) { Write-WinKitLog "Usando cache: $FileName" -Level Debug; return $dest }
 
     [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
     $tmp = "$dest.part"
@@ -49,7 +52,7 @@ function Get-WinKitDownload {
             $old = $ProgressPreference; $ProgressPreference = 'SilentlyContinue'   # a barra de progresso deixa o PS 5.1 muito lento
             try { Invoke-WebRequest -Uri $Url -OutFile $tmp -UseBasicParsing -UserAgent 'WinKit (+https://github.com/webpeak-br/winkit)' }
             finally { $ProgressPreference = $old }
-            $problem = & $valid $tmp
+            $problem = Test-WinKitDownloadedFile -Path $tmp @check
             if ($problem) { Remove-Item $tmp -Force -ErrorAction SilentlyContinue; throw "Arquivo recusado: $problem" }
             Move-Item -Path $tmp -Destination $dest -Force
             return $dest

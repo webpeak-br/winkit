@@ -104,7 +104,9 @@ function Undo-WinKitRun {
     if ($RunId -notmatch '^[0-9]{8}-[0-9]{6}-[0-9a-f]{6}$') { throw "RunId inválido: $RunId" }
     $file = Join-Path (Join-Path (Join-Path (Get-WinKitDataRoot) 'runs') $RunId) 'journal.json'
     if (-not (Test-Path $file)) { throw "Execução $RunId não encontrada ou sem alterações." }
-    $entries = @(Get-Content $file -Raw | ConvertFrom-Json)
+    # O PowerShell 5.1 devolve a lista do JSON como um único objeto: o pipeline desmonta em itens.
+    $parsed = Get-Content $file -Raw | ConvertFrom-Json
+    $entries = @($parsed | ForEach-Object { $_ })
     [array]::Reverse($entries)
     $ok = 0; $fail = 0
     foreach ($e in $entries) {

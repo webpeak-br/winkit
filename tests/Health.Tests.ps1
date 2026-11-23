@@ -28,26 +28,26 @@ Describe 'Saúde física dos discos' {
         Mock -ModuleName Health Get-CimInstance { @() } -ParameterFilter { $ClassName -eq 'MSStorageDriver_FailurePredictStatus' }
     }
     It 'erro de leitura não corrigido é crítico (disk_sectors)' {
-        Mock -ModuleName Health Get-PhysicalDisk { [pscustomobject]@{ DeviceId = 0; FriendlyName = 'SSD X'; HealthStatus = 'Healthy'; MediaType = 'SSD'; BusType = 'NVMe' } }
+        Mock -ModuleName Health Get-HealthDiskList { [pscustomobject]@{ DeviceId = 0; FriendlyName = 'SSD X'; HealthStatus = 'Healthy'; MediaType = 'SSD'; BusType = 'NVMe' } }
         Mock -ModuleName Health Get-HealthReliability { [pscustomobject]@{ ReadErrorsUncorrected = 12; Wear = 10; Temperature = 40 } }
         $r = InModuleScope Health { Test-HealthPhysicalDisk }
         $r.Code | Should -Be 'disk_sectors'
         $r.Status | Should -Be 'crit'
     }
     It 'falha prevista pelo SMART é crítica (disk_smart)' {
-        Mock -ModuleName Health Get-PhysicalDisk { [pscustomobject]@{ DeviceId = 1; FriendlyName = 'HD'; HealthStatus = 'Unhealthy' } }
+        Mock -ModuleName Health Get-HealthDiskList { [pscustomobject]@{ DeviceId = 1; FriendlyName = 'HD'; HealthStatus = 'Unhealthy' } }
         Mock -ModuleName Health Get-HealthReliability { [pscustomobject]@{ ReadErrorsUncorrected = 0 } }
         (InModuleScope Health { Test-HealthPhysicalDisk }).Code | Should -Be 'disk_smart'
     }
     It 'desgaste alto do SSD é atenção (disk_wear)' {
-        Mock -ModuleName Health Get-PhysicalDisk { [pscustomobject]@{ DeviceId = 0; FriendlyName = 'SSD'; HealthStatus = 'Healthy' } }
+        Mock -ModuleName Health Get-HealthDiskList { [pscustomobject]@{ DeviceId = 0; FriendlyName = 'SSD'; HealthStatus = 'Healthy' } }
         Mock -ModuleName Health Get-HealthReliability { [pscustomobject]@{ ReadErrorsUncorrected = 0; Wear = 95 } }
         $r = InModuleScope Health { Test-HealthPhysicalDisk }
         $r.Code | Should -Be 'disk_wear'
         $r.Status | Should -Be 'warn'
     }
     It 'sem discos visíveis (VM) é só informação' {
-        Mock -ModuleName Health Get-PhysicalDisk { @() }
+        Mock -ModuleName Health Get-HealthDiskList { @() }
         (InModuleScope Health { Test-HealthPhysicalDisk }).Status | Should -Be 'info'
     }
 }
@@ -72,7 +72,7 @@ Describe 'Dispositivos' {
             [pscustomobject]@{ Name = 'Controlador desconhecido'; ConfigManagerErrorCode = 28; HardwareID = @('PCI\VEN_8086&DEV_7A23'); PNPClass = $null }
             [pscustomobject]@{ Name = 'Desativado'; ConfigManagerErrorCode = 22; HardwareID = @('X'); PNPClass = 'Net' }
         } -ParameterFilter { $ClassName -eq 'Win32_PnPEntity' }
-        $r = InModuleScope Health { Test-HealthDevices }
+        $r = InModuleScope Health { Test-HealthDevice }
         $r.Code | Should -Be 'drivers_missing'
         $r.Message | Should -Match '^1 dispositivo'
         $r.Detail[0].hwid | Should -Contain 'PCI\VEN_8086&DEV_7A23'
