@@ -5,3 +5,4 @@ cache/
 # Nunca versionar
 CLAUDE.md
 .agentes
+dist/

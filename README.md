@@ -13,8 +13,22 @@ Kit open source para **preparar, otimizar, proteger e diagnosticar Windows**: Wi
 - **Sem dependências:** PowerShell 5.1 nativo, compatível com PowerShell 7. Ferramentas externas são baixadas sob demanda da fonte oficial, com SHA-256 e assinatura conferidos.
 - **Transparente:** log completo, relatório antes/depois e código legível. **Sem telemetria.**
 
-## Uso rápido
-Baixe o `.zip` da [última versão](https://github.com/webpeak-br/winkit/releases), extraia e, num prompt:
+## Uso rápido (sem baixar nada)
+Abra o **PowerShell como administrador** e rode:
+
+```powershell
+irm https://github.com/webpeak-br/winkit/releases/latest/download/winkit.ps1 | iex
+```
+
+Abre um menu com diagnóstico, reparo, relatórios e desfazer. Se o PowerShell não estiver como administrador, o WinKit pede a elevação sozinho. O arquivo é gerado a partir do código deste repositório a cada versão; o SHA-256 está em `SHA256SUMS.txt` na release.
+
+Para automação, passe o comando direto:
+```powershell
+& ([scriptblock]::Create((irm https://github.com/webpeak-br/winkit/releases/latest/download/winkit.ps1))) run -Module Health
+```
+
+### Com o .zip
+Baixe o `WinKit.zip` da [última versão](https://github.com/webpeak-br/winkit/releases), extraia e, num prompt:
 
 ```cmd
 WinKit.cmd run -Module Health                 :: diagnóstico (não altera nada)
@@ -62,10 +76,8 @@ Open source kit to **prepare, optimize, secure and diagnose Windows**: Windows 1
 - Third-party tools are downloaded on demand from official sources and verified (SHA-256 and Authenticode) before running. WinKit never redistributes binaries.
 - Status: Core and the **Health** module (diagnostics, DISM/SFC repair). Next: Updates, Apps, Drivers.
 
-```cmd
-WinKit.cmd run -Module Health
-WinKit.cmd run -Profile Reparo-Sistema -DryRun
-WinKit.cmd undo -RunId <id>
+```powershell
+irm https://github.com/webpeak-br/winkit/releases/latest/download/winkit.ps1 | iex   # menu, as administrator
 ```
 
 Reports: `%ProgramData%\WinKit\runs\<RunId>\report.html`. Exit code: 0 ok, 1 warning, 2 critical. License: MIT.

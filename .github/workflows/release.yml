@@ -1,0 +1,25 @@
+name: Release
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Gera winkit.ps1 e o .zip
+        shell: pwsh
+        run: |
+          ./build/Compile.ps1
+          Compress-Archive -Path WinKit.cmd, src, README.md, LICENSE -DestinationPath dist/WinKit.zip
+          (Get-FileHash dist/WinKit.zip -Algorithm SHA256).Hash + '  WinKit.zip' | Add-Content dist/SHA256SUMS.txt
+          Get-Content dist/SHA256SUMS.txt
+      - name: Publica a release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create $env:GITHUB_REF_NAME dist/winkit.ps1 dist/WinKit.zip dist/SHA256SUMS.txt --title $env:GITHUB_REF_NAME --notes "Rode no PowerShell como administrador: irm https://github.com/webpeak-br/winkit/releases/latest/download/winkit.ps1 | iex"

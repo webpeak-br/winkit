@@ -39,3 +39,26 @@ jobs:
         shell: pwsh
         run: |
           ${{ matrix.shell }} -NoProfile -ExecutionPolicy Bypass -Command "`$env:WINKIT_DATA = '$env:RUNNER_TEMP\winkit'; Import-Module ./src/WinKit/WinKit.psd1; `$o = Invoke-WinKit -Module Health -NoReport; `$o.Results | Format-Table Status, Check, Message -AutoSize -Wrap | Out-String -Width 200; if (-not `$o.Results.Count) { exit 1 }"
+
+  compiled:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Gera o arquivo único (dist/winkit.ps1)
+        shell: pwsh
+        run: ./build/Compile.ps1
+      - name: Roda o arquivo único como no "irm | iex" (sem o resto do repositório)
+        shell: powershell
+        run: |
+          $env:WINKIT_DATA = "$env:RUNNER_TEMP\winkit"
+          $code = Get-Content dist\winkit.ps1 -Raw -Encoding UTF8
+          Set-Location $env:RUNNER_TEMP
+          & ([scriptblock]::Create($code)) run -Module Health -Json | Out-File out.json -Encoding utf8
+          $r = Get-Content out.json -Raw | ConvertFrom-Json
+          $r.Results | Format-Table Status, Check, Message -AutoSize | Out-String -Width 200
+          if (-not $r.Results.Count) { throw 'arquivo único não rodou o diagnóstico' }
+          exit 0   # o WinKit sai com 1 quando há itens de atenção; aqui só importa que rodou
+      - uses: actions/upload-artifact@v4
+        with:
+          name: winkit
+          path: dist/
