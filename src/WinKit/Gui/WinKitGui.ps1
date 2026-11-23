@@ -459,7 +459,7 @@ function New-GuiLink {
     $h.Inlines.Add($Text) | Out-Null
     $h.NavigateUri = [uri]$Url
     $h.Foreground = '#B5BAFE'
-    $h.Add_RequestNavigate({ param($s, $e) Start-Process $e.Uri.AbsoluteUri })
+    $h.Add_RequestNavigate({ Start-Process $_.Uri.AbsoluteUri })
     [void]$t.Inlines.Add($h)
     $t.Margin = '0,2,14,0'
     return $t
@@ -551,6 +551,13 @@ function Show-GuiDriver {
     $grid.IsReadOnly = $true; $grid.AutoGenerateColumns = $true; $grid.HeadersVisibility = 'Column'; $grid.MaxHeight = 420
     $grid.Background = '#1E1D24'; $grid.RowBackground = '#1E1D24'; $grid.AlternatingRowBackground = '#23222A'; $grid.Foreground = '#ECEAF2'
     $grid.BorderBrush = '#2E2C38'; $grid.GridLinesVisibility = 'None'; $grid.CanUserAddRows = $false
+    $hs = New-Object Windows.Style ([Windows.Controls.Primitives.DataGridColumnHeader])
+    foreach ($kv in @{ Background = '#26242E'; Foreground = '#A3A0B3'; Padding = '8,6'; BorderThickness = '0' }.GetEnumerator()) {
+        $prop = [Windows.Controls.Primitives.DataGridColumnHeader]::($kv.Key + 'Property')
+        $conv = [ComponentModel.TypeDescriptor]::GetConverter($prop.PropertyType)
+        $hs.Setters.Add((New-Object Windows.Setter ($prop, $conv.ConvertFromInvariantString($kv.Value))))
+    }
+    $grid.ColumnHeaderStyle = $hs
     [void]$list.Children.Add($grid)
     Set-GuiStatus "$($drv.Count) drivers instalados · $($bad.Count) dispositivo(s) com problema · $($ups.Count) driver(s) no Windows Update."
 }
