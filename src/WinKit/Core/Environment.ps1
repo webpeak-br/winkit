@@ -89,16 +89,45 @@ function Get-WinKitAntivirus {
     }
 }
 
-# Resumo usado pelo diagnóstico e pela janela: antivírus de terceiros ativo vale; senão, o estado do Defender.
-function Get-WinKitAntivirusStatus {
-    $third = @(Get-WinKitAntivirus | Where-Object { -not $_.Defender -and $_.Enabled })
-    if ($third.Count) {
-        $av = $third[0]
-        return [pscustomobject]@{ Status = $(if ($av.UpToDate) { 'ok' } else { 'warn' }); Name = $av.Name
-            Text = $(if ($av.UpToDate) { 'ativo' } else { 'desatualizado' }); Code = $(if ($av.UpToDate) { '' } else { 'antivirus_outdated' }) }
+# Serviços de antivírus conhecidos, para quando o produto não se registra na Central de Segurança
+# (ex.: alguns agentes corporativos). Nome do serviço -> nome do produto.
+$script:KnownAvServices = [ordered]@{
+    'EPSecurityService' = 'Bitdefender Endpoint Security Tools'; 'EPProtectedService' = 'Bitdefender Endpoint Security Tools'
+    'bdservicehost' = 'Bitdefender'; 'VSSERV' = 'Bitdefender'
+    'AVP' = 'Kaspersky'; 'klnagent' = 'Kaspersky Endpoint'; 'ekrn' = 'ESET'; 'SAVService' = 'Sophos'; 'Sophos Endpoint Defense Service' = 'Sophos'
+    'CSFalconService' = 'CrowdStrike Falcon'; 'SentinelAgent' = 'SentinelOne'; 'ntrtscan' = 'Trend Micro'; 'TmCCSF' = 'Trend Micro'
+    'McShield' = 'McAfee/Trellix'; 'mfemms' = 'McAfee/Trellix'; 'avast! Antivirus' = 'Avast'; 'AvastWscReporter' = 'Avast'; 'AVG Antivirus' = 'AVG'
+    'WRSVC' = 'Webroot'; 'SepMasterService' = 'Symantec Endpoint Protection'; 'CylanceSvc' = 'Cylance'; 'HitmanPro.Alert' = 'Sophos HitmanPro'
+}
+
+function Get-WinKitAvService {
+    foreach ($name in $script:KnownAvServices.Keys) {
+        $svc = Get-Service -Name $name -ErrorAction SilentlyContinue
+        if ($svc -and $svc.Status -eq 'Running') { return $script:KnownAvServices[$name] }
     }
+    return $null
+}
+
+# Resumo usado pelo diagnóstico e pela janela. Ordem: antivírus de terceiros registrado na Central de Segurança;
+# Defender em modo passivo (sinal do próprio Windows de que outro antivírus assumiu); serviço conhecido rodando;
+# por último, o estado do Defender.
+function Get-WinKitAntivirusStatus {
     $mp = try { Get-MpComputerStatus -ErrorAction Stop } catch { $null }
-    if (-not $mp -or -not $mp.AntivirusEnabled) { return [pscustomobject]@{ Status = 'crit'; Name = 'Nenhum antivírus'; Text = 'desligado'; Code = 'antivirus_off' } }
+    $passive = $mp -and "$($mp.AMRunningMode)" -match 'Passive|EDR Block'
+    $third = @(Get-WinKitAntivirus | Where-Object { -not $_.Defender })
+    $svcName = Get-WinKitAvService
+    $active = @($third | Where-Object Enabled)
+    $name = if ($active.Count) { $active[0].Name } elseif ($third.Count) { $third[0].Name } elseif ($svcName) { $svcName } else { '' }
+    if ($active.Count -or (($third.Count -or $svcName) -and ($passive -or ($mp -and -not $mp.RealTimeProtectionEnabled)))) {
+        $outdated = $active.Count -and -not $active[0].UpToDate
+        return [pscustomobject]@{ Status = $(if ($outdated) { 'warn' } else { 'ok' }); Name = $name
+            Text = $(if ($outdated) { 'desatualizado' } else { 'ativo' }); Code = $(if ($outdated) { 'antivirus_outdated' } else { '' }) }
+    }
+    if ($passive) { return [pscustomobject]@{ Status = 'ok'; Name = 'Outro antivírus (Defender em modo passivo)'; Text = 'ativo'; Code = '' } }
+    if (-not $mp -or -not $mp.AntivirusEnabled) {
+        if ($svcName) { return [pscustomobject]@{ Status = 'ok'; Name = $svcName; Text = 'ativo'; Code = '' } }
+        return [pscustomobject]@{ Status = 'crit'; Name = 'Nenhum antivírus'; Text = 'desligado'; Code = 'antivirus_off' }
+    }
     if (-not $mp.RealTimeProtectionEnabled) { return [pscustomobject]@{ Status = 'warn'; Name = 'Microsoft Defender'; Text = 'sem tempo real'; Code = 'antivirus_realtime_off' } }
     if ($mp.AntivirusSignatureAge -gt 3) { return [pscustomobject]@{ Status = 'warn'; Name = 'Microsoft Defender'; Text = "assinaturas com $($mp.AntivirusSignatureAge) dias"; Code = 'antivirus_outdated' } }
     [pscustomobject]@{ Status = 'ok'; Name = 'Microsoft Defender'; Text = 'ativo'; Code = '' }

@@ -176,7 +176,22 @@ Describe 'Antivírus' {
         $s.Status | Should -Be 'ok'
         $s.Name | Should -Match 'Bitdefender'
     }
+    It 'Bitdefender que não se registra: serviço rodando + Defender passivo = ativo' {
+        Mock -ModuleName WinKit Get-WinKitAntivirus { @() }
+        Mock -ModuleName WinKit Get-WinKitAvService { 'Bitdefender Endpoint Security Tools' }
+        Mock -ModuleName WinKit Get-MpComputerStatus { [pscustomobject]@{ AntivirusEnabled = $true; RealTimeProtectionEnabled = $false; AMRunningMode = 'Passive Mode' } }
+        $s = Get-WinKitAntivirusStatus
+        $s.Status | Should -Be 'ok'
+        $s.Name | Should -Match 'Bitdefender'
+    }
+    It 'registrado na Central com estado que não entendemos, mas Defender sem tempo real: vale o de terceiros' {
+        Mock -ModuleName WinKit Get-WinKitAntivirus { [pscustomobject]@{ Name = 'Bitdefender Endpoint Security Tools'; Enabled = $false; UpToDate = $false; Defender = $false } }
+        Mock -ModuleName WinKit Get-WinKitAvService { $null }
+        Mock -ModuleName WinKit Get-MpComputerStatus { [pscustomobject]@{ AntivirusEnabled = $true; RealTimeProtectionEnabled = $false; AMRunningMode = 'Normal' } }
+        (Get-WinKitAntivirusStatus).Status | Should -Be 'ok'
+    }
     It 'sem terceiros, Defender sem tempo real é atenção' {
+        Mock -ModuleName WinKit Get-WinKitAvService { $null }
         Mock -ModuleName WinKit Get-WinKitAntivirus { @() }
         Mock -ModuleName WinKit Get-MpComputerStatus { [pscustomobject]@{ AntivirusEnabled = $true; RealTimeProtectionEnabled = $false } }
         (Get-WinKitAntivirusStatus).Code | Should -Be 'antivirus_realtime_off'
