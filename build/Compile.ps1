@@ -45,6 +45,13 @@ function Install-WinKitApp {
     return $dir
 }
 
+# A politica de execucao padrao (Restricted) bloqueia os arquivos que o WinKit grava. Libera so para esta
+# janela do PowerShell (escopo Process), sem mudar a configuracao da maquina, como faz o winutil.
+try { Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force -ErrorAction Stop } catch {
+    Write-Host 'Nao foi possivel liberar a execucao de scripts nesta janela (politica imposta pela empresa / GPO).' -ForegroundColor Red
+    Write-Host 'Peca ao administrador do dominio ou rode: powershell -ExecutionPolicy Bypass' -ForegroundColor Red
+    return
+}
 $app = Install-WinKitApp
 $cli = Join-Path $app 'winkit.ps1'
 $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)

@@ -1,6 +1,6 @@
 ﻿@{
     RootModule        = 'WinKit.psm1'
-    ModuleVersion     = '0.1.1'
+    ModuleVersion     = '0.1.2'
     GUID              = '6f2a8a7e-3c41-4c7e-9a52-1d3b7f0e9c11'
     Author            = 'Webpeak e colaboradores'
     CompanyName       = 'Webpeak'
