@@ -2,7 +2,7 @@
 # o log chega por uma fila e aparece na barra de baixo. Precisa de STA (o winkit.ps1 cuida disso).
 # Os blocos de evento não usam GetNewClosure: precisam enxergar as funções e o $script:Gui deste arquivo.
 
-$script:GuiPages = 'PageOverview', 'PageHealth', 'PageApps', 'PageUpdates', 'PageMaint', 'PageHistory'
+$script:GuiPages = 'PageOverview', 'PageHealth', 'PageApps', 'PageDrivers', 'PageUpdates', 'PageMaint', 'PageHistory'
 
 function Show-WinKitGui {
     [CmdletBinding()]
@@ -19,7 +19,7 @@ function Show-WinKitGui {
         $ui[$n.Value] = $win.FindName($n.Value)
     }
     $script:Gui = @{ Ui = $ui; Win = $win; Busy = $false; Task = $null; Queue = New-Object 'System.Collections.Concurrent.ConcurrentQueue[string]'
-        ModulePath = (Join-Path (Split-Path $PSScriptRoot -Parent) 'WinKit.psd1'); LastReport = $null; AppBoxes = @{}; UpdBoxes = @{} }
+        ModulePath = (Join-Path (Split-Path $PSScriptRoot -Parent) 'WinKit.psd1'); LastReport = $null; AppBoxes = @{}; UpdBoxes = @{}; DrvBoxes = @{}; VendorUrl = '' }
     $script:Colors = @{ ok = '#3ECF8E'; warn = '#F5B041'; crit = '#FF5C6C'; info = '#7AA2FF' }
     $script:StatusLabel = @{ ok = 'OK'; warn = 'Atenção'; crit = 'Crítico'; info = 'Info' }
 
@@ -55,6 +55,35 @@ function Show-WinKitGui {
         Start-GuiTask -Title 'Atualizando todos os programas (winget)' -Work {
             Invoke-WinKit -Module Apps -Mode invoke -ModuleParams @{ UpgradeAll = $true } -NoReport -Force
         } -Done { param($r) Show-GuiResult $r 'Atualização de programas' }
+    })
+
+    # Drivers
+    $ui.BtnDrvScan.Add_Click({ Start-GuiDriverScan })
+    $ui.BtnDrvVendor.Add_Click({ if ($script:Gui.VendorUrl) { Start-Process $script:Gui.VendorUrl } })
+    $ui.BtnDrvBackup.Add_Click({
+        Start-GuiTask -Title 'Backup dos drivers' -Work {
+            Import-Module (Join-Path (Split-Path $ModulePath -Parent) 'Modules\Drivers\Drivers.psm1') -Force
+            $dest = Join-Path (Get-WinKitDataRoot) ('drivers-backup-' + (Get-Date -Format 'yyyyMMdd-HHmmss'))
+            $r = Export-WinKitDriverBackup -Destination $dest
+            [pscustomobject]@{ Ok = $r.Success; Dest = $dest; Code = $r.ExitCode }
+        } -Done {
+            param($r)
+            if ($r -and $r.Ok) { Set-GuiStatus "Backup salvo em $($r.Dest) (restore.ps1 reinstala)."; Start-Process explorer.exe $r.Dest }
+            else { Set-GuiStatus "Backup falhou (código $($r.Code)); veja o log." }
+        }
+    })
+    $ui.BtnDrvInstall.Add_Click({
+        $ids = @($script:Gui.DrvBoxes.GetEnumerator() | Where-Object { $_.Value.IsChecked } | ForEach-Object Key)
+        if (-not $ids.Count) { Set-GuiStatus 'Marque pelo menos um driver.'; return }
+        $msg = "Instalar $($ids.Count) driver(s) do Windows Update? Antes, o WinKit faz backup dos drivers atuais."
+        if ([Windows.MessageBox]::Show($msg, 'WinKit', 'YesNo') -ne 'Yes') { return }
+        Start-GuiTask -Title "Instalando $($ids.Count) driver(s)" -Arguments @{ Ids = $ids } -Work {
+            Invoke-WinKit -Module Drivers -Mode invoke -ModuleParams @{ UpdateIds = $TaskArgs.Ids; Backup = $true } -Force
+        } -Done {
+            param($r)
+            Show-GuiResult $r 'Drivers'
+            if ($r -and $r.RebootRequired) { [void][Windows.MessageBox]::Show('Reinicie o computador para concluir a instalação dos drivers.', 'WinKit') }
+        }
     })
 
     # Atualizações do Windows
@@ -128,8 +157,13 @@ function Save-GuiScreenshot {
     $win.Show()
     Wait-GuiEvent $Wait
     $base = [IO.Path]::Combine([IO.Path]::GetDirectoryName($Path), [IO.Path]::GetFileNameWithoutExtension($Path))
-    foreach ($p in 'PageOverview', 'PageApps', 'PageMaint') {
+    foreach ($p in 'PageOverview', 'PageApps', 'PageDrivers', 'PageMaint') {
         Show-GuiPage $p
+        if ($p -eq 'PageDrivers') {
+            Start-GuiDriverScan
+            $limit = (Get-Date).AddMinutes(6)
+            while ($script:Gui.Busy -and (Get-Date) -lt $limit) { Wait-GuiEvent 2 }
+        }
         Wait-GuiEvent $(if ($p -eq 'PageApps') { 25 } else { 2 })
         $bmp = New-Object Windows.Media.Imaging.RenderTargetBitmap ([int]$win.ActualWidth), ([int]$win.ActualHeight), 96, 96, ([Windows.Media.PixelFormats]::Pbgra32)
         $bmp.Render($win)
@@ -416,4 +450,107 @@ function Show-GuiHistory {
         $b.Child = $d
         [void]$list.Children.Add($b)
     }
+}
+
+function New-GuiLink {
+    param([string]$Text, [string]$Url)
+    $t = New-Object Windows.Controls.TextBlock
+    $h = New-Object Windows.Documents.Hyperlink
+    $h.Inlines.Add($Text) | Out-Null
+    $h.NavigateUri = [uri]$Url
+    $h.Foreground = '#B5BAFE'
+    $h.Add_RequestNavigate({ param($s, $e) Start-Process $e.Uri.AbsoluteUri })
+    [void]$t.Inlines.Add($h)
+    $t.Margin = '0,2,14,0'
+    return $t
+}
+
+function New-GuiBox {
+    $b = New-Object Windows.Controls.Border
+    $b.Background = '#1E1D24'; $b.BorderBrush = '#2E2C38'; $b.BorderThickness = 1; $b.CornerRadius = 8; $b.Padding = '14,10'; $b.Margin = '0,0,0,8'
+    return $b
+}
+
+function Start-GuiDriverScan {
+    $list = $script:Gui.Ui.DrvList
+    $list.Children.Clear()
+    [void]$list.Children.Add((New-GuiText 'Analisando dispositivos e procurando drivers no Windows Update… (de 1 a 5 minutos)' '#A3A0B3'))
+    $script:Gui.Ui.BtnDrvInstall.IsEnabled = $false
+    Start-GuiTask -Title 'Analisando drivers' -Work {
+        Import-Module (Join-Path (Split-Path $ModulePath -Parent) 'Modules\Drivers\Drivers.psm1') -Force
+        $res = @(Test-WinKitDriver -SearchWindowsUpdate $true)
+        , $res
+    } -Done { param($res) Show-GuiDriver @($res) }
+}
+
+function Show-GuiDriver {
+    param([object[]]$Results)
+    $ui = $script:Gui.Ui
+    $list = $ui.DrvList
+    $list.Children.Clear()
+    $script:Gui.DrvBoxes = @{}
+    $inv = $Results | Where-Object Check -eq 'drivers.inventory' | Select-Object -First 1
+    $probs = $Results | Where-Object Check -eq 'drivers.problems' | Select-Object -First 1
+    $upd = $Results | Where-Object Check -eq 'drivers.updates' | Select-Object -First 1
+    foreach ($x in @($Results | Where-Object Check -eq 'drivers.wu')) { [void]$list.Children.Add((New-GuiText $x.Message '#F5B041')) }
+    if (-not $inv) { [void]$list.Children.Add((New-GuiText 'A análise não terminou (veja o log).' '#FF5C6C')); return }
+    $m = $inv.Detail.machine
+    $ui.DrvMachine.Text = "Máquina: $($m.manufacturer) $($m.model) · placa $($m.board) · BIOS $($m.bios)"
+    $script:Gui.VendorUrl = $m.vendorUrl
+    $ui.BtnDrvVendor.IsEnabled = [bool]$m.vendorUrl
+
+    # 1. Dispositivos com problema
+    $bad = @($probs.Detail | Where-Object { $_ -and $_.Name })
+    $h = New-GuiText "Dispositivos com problema ($($bad.Count))" $(if ($bad.Count) { '#F5B041' } else { '#3ECF8E' }) 15 'SemiBold'
+    $h.Margin = '0,4,0,8'; [void]$list.Children.Add($h)
+    if (-not $bad.Count) { [void]$list.Children.Add((New-GuiText 'Nenhum: todos os dispositivos estão com driver funcionando.' '#A3A0B3')) }
+    foreach ($d in $bad) {
+        $b = New-GuiBox
+        $sp = New-Object Windows.Controls.StackPanel
+        [void]$sp.Children.Add((New-GuiText "$($d.Name) — $($d.Problem)" '#ECEAF2' 13.5 'SemiBold'))
+        [void]$sp.Children.Add((New-GuiText "Código de hardware: $(@($d.HardwareIds | Select-Object -First 2) -join '  ·  ')" '#A3A0B3' 12))
+        $links = New-Object Windows.Controls.WrapPanel
+        if ($d.CatalogUrl) { [void]$links.Children.Add((New-GuiLink 'Procurar no Microsoft Update Catalog' $d.CatalogUrl)) }
+        if ($m.vendorUrl) { [void]$links.Children.Add((New-GuiLink 'Página de drivers do fabricante' $m.vendorUrl)) }
+        [void]$sp.Children.Add($links)
+        $b.Child = $sp
+        [void]$list.Children.Add($b)
+    }
+
+    # 2. Drivers disponíveis no Windows Update
+    $ups = @($upd.Detail | Where-Object { $_ -and $_.Id })
+    $h = New-GuiText "Disponíveis no Windows Update ($($ups.Count))" '#B5BAFE' 15 'SemiBold'
+    $h.Margin = '0,14,0,8'; [void]$list.Children.Add($h)
+    if (-not $ups.Count) { [void]$list.Children.Add((New-GuiText 'Nenhum driver novo oferecido para esta máquina.' '#A3A0B3')) }
+    foreach ($u in $ups) {
+        $cb = New-Object Windows.Controls.CheckBox
+        $fix = @($u.FixesDevices)
+        $cb.IsChecked = $fix.Count -gt 0
+        $cb.Content = "$($u.Title)$(if ($u.Date) { " · $($u.Date)" })$(if ($u.SizeMB) { " · $($u.SizeMB) MB" })$(if ($fix.Count) { "  → resolve: $($fix -join ', ')" })"
+        if ($fix.Count) { $cb.Foreground = '#3ECF8E' }
+        $cb.ToolTip = "Fornecedor: $($u.Provider) · Classe: $($u.Class) · Hardware: $($u.HardwareId)"
+        $script:Gui.DrvBoxes[$u.Id] = $cb
+        [void]$list.Children.Add($cb)
+    }
+    $ui.BtnDrvInstall.IsEnabled = $ups.Count -gt 0
+
+    # 3. Ferramentas oficiais dos fabricantes de chips
+    $h = New-GuiText 'Ferramentas oficiais' '#B5BAFE' 15 'SemiBold'
+    $h.Margin = '0,14,0,6'; [void]$list.Children.Add($h)
+    $tools = New-Object Windows.Controls.WrapPanel
+    foreach ($k in @($m.chipTools.Keys)) { if ($k) { [void]$tools.Children.Add((New-GuiLink $k $m.chipTools[$k])) } }
+    [void]$list.Children.Add($tools)
+
+    # 4. Drivers instalados
+    $drv = @($inv.Detail.drivers | Where-Object { $_ } | Sort-Object Class, Device)
+    $h = New-GuiText "Drivers instalados ($($drv.Count))" '#B5BAFE' 15 'SemiBold'
+    $h.Margin = '0,14,0,6'; [void]$list.Children.Add($h)
+    $grid = New-Object Windows.Controls.DataGrid
+    $grid.ItemsSource = $drv | Select-Object @{ n = 'Dispositivo'; e = { $_.Device } }, @{ n = 'Classe'; e = { $_.Class } }, @{ n = 'Fornecedor'; e = { $_.Provider } },
+        @{ n = 'Versão'; e = { $_.Version } }, @{ n = 'Data'; e = { $_.Date } }, @{ n = 'Assinado'; e = { if ($_.Signed) { 'sim' } else { 'NÃO' } } }
+    $grid.IsReadOnly = $true; $grid.AutoGenerateColumns = $true; $grid.HeadersVisibility = 'Column'; $grid.MaxHeight = 420
+    $grid.Background = '#1E1D24'; $grid.RowBackground = '#1E1D24'; $grid.AlternatingRowBackground = '#23222A'; $grid.Foreground = '#ECEAF2'
+    $grid.BorderBrush = '#2E2C38'; $grid.GridLinesVisibility = 'None'; $grid.CanUserAddRows = $false
+    [void]$list.Children.Add($grid)
+    Set-GuiStatus "$($drv.Count) drivers instalados · $($bad.Count) dispositivo(s) com problema · $($ups.Count) driver(s) no Windows Update."
 }

@@ -95,6 +95,7 @@
           <Button x:Name="NavOverview" Style="{StaticResource Nav}" Content="Visão geral" Tag="PageOverview"/>
           <Button x:Name="NavHealth" Style="{StaticResource Nav}" Content="Diagnóstico" Tag="PageHealth"/>
           <Button x:Name="NavApps" Style="{StaticResource Nav}" Content="Aplicativos" Tag="PageApps"/>
+          <Button x:Name="NavDrivers" Style="{StaticResource Nav}" Content="Drivers" Tag="PageDrivers"/>
           <Button x:Name="NavUpdates" Style="{StaticResource Nav}" Content="Atualizações" Tag="PageUpdates"/>
           <Button x:Name="NavMaint" Style="{StaticResource Nav}" Content="Manutenção" Tag="PageMaint"/>
           <Button x:Name="NavHistory" Style="{StaticResource Nav}" Content="Histórico e desfazer" Tag="PageHistory"/>
@@ -160,6 +161,22 @@
             </StackPanel>
           </StackPanel>
           <ScrollViewer VerticalScrollBarVisibility="Auto"><StackPanel x:Name="AppsList"/></ScrollViewer>
+        </DockPanel>
+
+        <!-- Drivers -->
+        <DockPanel x:Name="PageDrivers" Visibility="Collapsed">
+          <StackPanel DockPanel.Dock="Top">
+            <TextBlock Style="{StaticResource H1}" Text="Drivers"/>
+            <TextBlock Style="{StaticResource Sub}" Text="Dispositivos com problema, drivers que o Windows Update tem para esta máquina e todos os drivers instalados. Antes de instalar, o WinKit faz backup dos drivers atuais."/>
+            <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+              <Button x:Name="BtnDrvScan" Style="{StaticResource Primary}" Content="Analisar drivers"/>
+              <Button x:Name="BtnDrvInstall" Content="Instalar marcados" IsEnabled="False"/>
+              <Button x:Name="BtnDrvBackup" Content="Só fazer backup"/>
+              <Button x:Name="BtnDrvVendor" Content="Site do fabricante" IsEnabled="False"/>
+            </StackPanel>
+            <TextBlock x:Name="DrvMachine" Foreground="#A3A0B3" Margin="0,0,0,8" TextWrapping="Wrap"/>
+          </StackPanel>
+          <ScrollViewer VerticalScrollBarVisibility="Auto"><StackPanel x:Name="DrvList"/></ScrollViewer>
         </DockPanel>
 
         <!-- Atualizações -->

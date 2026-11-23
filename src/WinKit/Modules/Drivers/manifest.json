@@ -1,0 +1,23 @@
+{
+  "id": "Drivers",
+  "name": "Drivers",
+  "description": "Lista os drivers instalados e os dispositivos com problema, procura no Windows Update os drivers que faltam ou estão desatualizados e instala os escolhidos, com backup antes.",
+  "version": "0.1.0",
+  "platforms": ["Desktop", "Server", "ServerCore"],
+  "minBuild": 14393,
+  "risk": "medium",
+  "requiresReboot": true,
+  "dependsOn": ["Updates"],
+  "tools": [],
+  "functions": {
+    "test": "Test-WinKitDriver",
+    "invoke": "Invoke-WinKitDriver",
+    "undo": null,
+    "report": null
+  },
+  "parameters": {
+    "SearchWindowsUpdate": { "type": "bool", "default": true, "description": "Procura drivers no Windows Update (leva de 1 a 5 minutos)" },
+    "UpdateIds": { "type": "string[]", "default": [], "description": "Invoke: drivers do Windows Update a instalar (UpdateID); vazio = os que resolvem dispositivos com problema" },
+    "Backup": { "type": "bool", "default": true, "description": "Invoke: exporta todos os drivers atuais antes de instalar" }
+  }
+}
